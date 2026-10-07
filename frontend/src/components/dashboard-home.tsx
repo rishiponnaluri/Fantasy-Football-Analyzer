@@ -48,9 +48,9 @@ function teamScore(team: FantasyTeam | null, isMine: boolean, side: FantasyPredi
 
 function DashboardTeamScore({ team, isMine, side, state }: { team: FantasyTeam | null; isMine: boolean; side?: FantasyPredictionSide; state: 'PREGAME' | 'LIVE' | 'FINAL' }) {
   const [logoFailed, setLogoFailed] = useState(false);
-  if (!team) return <div className="home-team-score empty"><span>Fantasy team</span><strong>Bye week</strong><small>No opponent this week</small></div>;
+  if (!team) return <div className="broadcast-team-side empty"><span>Fantasy team</span><strong>Bye week</strong><small>No opponent this week</small></div>;
   const score = teamScore(team, isMine, side, state)!;
-  return <div className={`home-team-score ${isMine ? 'is-mine' : ''}`} style={{ '--fantasy-accent': score.color } as React.CSSProperties}>
+  return <div className={`broadcast-team-side ${isMine ? 'is-mine' : ''}`} style={{ '--fantasy-accent': score.color } as React.CSSProperties}>
     <div className="home-team-identity">
       <span className="home-team-logo">{team.team_logo_url && !logoFailed ? <img src={team.team_logo_url} alt="" onError={() => setLogoFailed(true)}/> : (team.abbreviation || team.team_name.slice(0, 2))}</span>
       <div><span>{isMine ? 'YOUR TEAM' : 'OPPONENT'}</span><strong title={team.team_name}>{team.team_name}</strong><small>{ownerNames(team) || 'Owner unavailable'}{isMine && team.record ? ` · ${team.record.wins}–${team.record.losses}–${team.record.ties}` : ''}</small></div>
@@ -61,7 +61,7 @@ function DashboardTeamScore({ team, isMine, side, state }: { team: FantasyTeam |
 }
 
 function MatchupHero({ snapshot, matchup, prediction, onDetails }: { snapshot: Snapshot; matchup: FantasyMatchup | undefined; prediction?: MatchupPrediction; onDetails: () => void }) {
-  if (!matchup) return <section className="home-matchup-hero home-matchup-empty"><span className="home-kicker">WEEK {snapshot.league.current_week}</span><h2>No fantasy matchup scheduled</h2><p>ESPN has not published a matchup for your team this week.</p></section>;
+  if (!matchup) return <section className="broadcast-matchup-stage home-matchup-empty"><span className="home-kicker">WEEK {snapshot.league.current_week}</span><h2>No fantasy matchup scheduled</h2><p>ESPN has not published a matchup for your team this week.</p></section>;
   const state = matchupState(matchup, snapshot.liveTeamIds, snapshot.league.current_week, prediction);
   const home = matchup.home_team;
   const away = matchup.away_team;
@@ -77,20 +77,20 @@ function MatchupHero({ snapshot, matchup, prediction, onDetails }: { snapshot: S
   const finalWinner = home?.current_fantasy_score != null && away?.current_fantasy_score != null
     ? home.current_fantasy_score === away.current_fantasy_score ? 'TIE' : home.current_fantasy_score > away.current_fantasy_score ? home.team_id === snapshot.team.team_id ? 'YOU WON' : 'OPPONENT WON' : away?.team_id === snapshot.team.team_id ? 'YOU WON' : 'OPPONENT WON'
     : 'FINAL';
-  return <section className={`home-matchup-hero home-matchup-${state.toLowerCase()}`} aria-label="Current fantasy matchup">
+  return <section className={`broadcast-matchup-stage state-${state.toLowerCase()}`} aria-label="Current fantasy matchup">
     <div className="home-matchup-topline"><span className="home-kicker">WEEK {snapshot.league.current_week} · YOUR MATCHUP</span><span className={`home-matchup-state ${state.toLowerCase()}`}>{state === 'LIVE' && <i/>}{state === 'FINAL' ? finalWinner : state}</span></div>
-    <div className="home-matchup-scoreboard">
+    <div className="broadcast-scoreboard">
       <DashboardTeamScore team={home} isMine={home?.team_id === snapshot.team.team_id} side={homeSide} state={state}/>
-      <div className="home-versus"><span>{state === 'FINAL' ? 'FINAL' : 'VS'}</span></div>
+      <div className="broadcast-versus"><span>{state === 'FINAL' ? 'FINAL' : 'VS'}</span></div>
       <DashboardTeamScore team={away} isMine={away?.team_id === snapshot.team.team_id} side={awaySide} state={state}/>
     </div>
-    {state !== 'FINAL' && <div className="home-matchup-odds">
+    {state !== 'FINAL' && <div className="broadcast-odds">
       {typeof homeWin === 'number' && typeof awayWin === 'number' ? <>
         <div className="home-win-labels"><span style={{ color: teamAccentColor(home?.team_id, home?.primary_color) }}>{home?.team_name || 'Home'} <b>{Math.round(homeWin * 100)}%</b></span><span style={{ color: teamAccentColor(away?.team_id, away?.primary_color) }}>{away?.team_name || 'Away'} <b>{Math.round(awayWin * 100)}%</b></span></div>
         <PredictionBar prediction={prediction ? { ...prediction, team_a: homeSide, team_b: awaySide, team_a_win_probability: homeWin, team_b_win_probability: awayWin } : undefined} homeName={home?.team_name || 'Home'} awayName={away?.team_name || 'Away'} homeId={home?.team_id} awayId={away?.team_id} homeColor={home?.primary_color} awayColor={away?.primary_color}/>
       </> : <div className="home-odds-unavailable">Win chance unavailable</div>}
     </div>}
-    <div className="home-matchup-foot"><span>{myLeft == null ? '--' : myLeft} players left for you</span><span>{opponentLeft == null ? '--' : opponentLeft} for {opponent?.team_name || 'opponent'}</span><button type="button" onClick={onDetails}>Matchup details <ArrowUpRight size={14}/></button></div>
+    <div className="broadcast-matchup-foot"><span>{myLeft == null ? '--' : myLeft} players left for you</span><span>{opponentLeft == null ? '--' : opponentLeft} for {opponent?.team_name || 'opponent'}</span><button type="button" onClick={onDetails}>Open matchup <ArrowUpRight size={14}/></button></div>
   </section>;
 }
 
@@ -191,12 +191,12 @@ export default function DashboardHome({ snapshot, startSit, onNavigate, onDetail
   const matchup = snapshot.matchups.fantasy_matchups.find(item => item.involves_my_team);
   const prediction = matchup ? snapshot.predictions?.predictions.find(item => item.fantasy_matchup_id === matchup.fantasy_matchup_id) : undefined;
   const currentState = matchup ? matchupState(matchup, snapshot.liveTeamIds, snapshot.league.current_week, prediction) : 'PREGAME';
-  return <div className="dashboard-home">
-    <div className="dashboard-home-meta"><span>{snapshot.team.team_name}</span><span>{snapshot.team.record ? `${snapshot.team.record.wins}–${snapshot.team.record.losses}–${snapshot.team.record.ties}` : 'Record unavailable'}</span><span>Week {snapshot.league.current_week}</span><span>{snapshot.league.fantasy_team_count} teams</span></div>
-    <div className="dashboard-editorial-grid">
+  return <div className="dashboard-home broadcast-home">
+    <div className="broadcast-deckline"><div><span>WEEK {snapshot.league.current_week}</span><b>{snapshot.league.league_name || 'Fantasy League'}</b></div><p>{snapshot.team.team_name}{snapshot.team.record ? ` · ${snapshot.team.record.wins}–${snapshot.team.record.losses}–${snapshot.team.record.ties}` : ''}<small>{snapshot.league.fantasy_team_count} teams</small></p></div>
+    <div className="dashboard-editorial-grid broadcast-main-layout">
       <div className="dashboard-home-left"><MatchupHero snapshot={snapshot} matchup={matchup} prediction={prediction} onDetails={() => matchup && onDetails(matchup)}/><GameDayRail snapshot={snapshot} onNavigate={onNavigate}/></div>
       <aside className="dashboard-home-right"><AttentionQueue snapshot={snapshot}/><NextDecision data={startSit} state={currentState} onNavigate={onNavigate}/><LeaguePulse snapshot={snapshot} onDetails={onDetails}/></aside>
     </div>
-    <div className="dashboard-lower-grid"><AroundTheLeague snapshot={snapshot} onDetails={onDetails} onNavigate={onNavigate}/><LineupPreview snapshot={snapshot} data={startSit} onNavigate={onNavigate}/></div>
+    <div className="dashboard-lower-grid broadcast-lower-layout"><AroundTheLeague snapshot={snapshot} onDetails={onDetails} onNavigate={onNavigate}/><LineupPreview snapshot={snapshot} data={startSit} onNavigate={onNavigate}/></div>
   </div>;
 }
