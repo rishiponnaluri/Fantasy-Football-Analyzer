@@ -3634,3 +3634,150 @@ button.primary-button:disabled { opacity: .48; }
   .nfl-week-current { min-width:72px; font-size:16px; }
   .nfl-game-team-copy strong { font-size:12px; }
 }
+
+/* Typography experiment: reserve the condensed sports face for scores and brand. */
+:root { --font-ui: var(--font-sports-ui, "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif); }
+body { font-family: var(--font-ui); }
+
+/* Navigation and page titles use the calmer interface face and natural casing. */
+.sports-primary-nav button,
+.sports-subnav button,
+.sports-context-tools,
+.sports-league-mark,
+.sports-main-shell .page-heading h1,
+.roster-page-heading h1,
+.start-sit-page-head h1,
+.waiver-market-top h1,
+.trade-desk-heading h1,
+.player-discovery-hero h1,
+.lm-page-head h2,
+.nfl-schedule-heading h1,
+.player-profile-page .player-hero-copy h1,
+.player-hero-copy h1,
+.team-player-banner-copy h2 {
+  font-family: var(--font-ui) !important;
+  font-weight: 700;
+  letter-spacing: -.025em;
+  text-transform: none !important;
+}
+.sports-main-shell .page-heading h1 { font-size: clamp(34px, 3.4vw, 48px); }
+.roster-page-heading h1,
+.start-sit-page-head h1,
+.waiver-market-top h1,
+.trade-desk-heading h1,
+.player-discovery-hero h1 { font-size: clamp(34px, 3.5vw, 48px); line-height: 1.08; }
+.lm-page-head h2 { font-size: clamp(32px, 3.1vw, 42px); }
+.nfl-schedule-heading h1 { font-size: clamp(34px, 3.5vw, 48px); }
+.sports-primary-nav button { font-size: 12px; font-weight: 500; letter-spacing: -.01em; }
+.sports-primary-nav button.active { font-weight: 600; }
+
+/* Section titles: size and weight establish hierarchy without all-caps display type. */
+.broadcast-home .home-section-heading h2,
+.roster-section-heading h2,
+.lineup-section-heading h2,
+.lineup-board-heading h2,
+.player-results-heading h2,
+.waiver-market-section-head h2,
+.waiver-marketplace-heading h2,
+.trade-desk-section-heading h2,
+.trade-roster-board > header h3,
+.trade-result-sheet > header h2,
+.lm-section-head h3,
+.nfl-day-section > header h2,
+.quick-view-news h3,
+.profile-content-section h2,
+.player-panel-title h2,
+.nfl-detail-section h2 {
+  font-family: var(--font-ui) !important;
+  font-weight: 650;
+  letter-spacing: -.02em;
+  line-height: 1.2;
+  text-transform: none !important;
+}
+.eyebrow,
+.home-kicker,
+.dashboard-section-kicker,
+.player-discovery-kicker {
+  letter-spacing: .07em;
+}
+
+/* Player and fantasy-team names remain prominent, but read like names rather than posters. */
+.broadcast-team-side .home-team-identity strong,
+.broadcast-deckline > div b,
+.broadcast-home .game-day-copy a,
+.broadcast-home .attention-copy a,
+.broadcast-home .next-decision-pair a,
+.broadcast-home .pulse-team b,
+.broadcast-home .league-strip-team b,
+.roster-slot-name,
+.lineup-decision-name,
+.lineup-sheet-name,
+.player-discovery-name,
+.waiver-move-player a,
+.waiver-market-name-line > a,
+.trade-target-name,
+.trade-person-name,
+.trade-desk-league,
+.trade-pick-player > a,
+.lm-team-copy strong,
+.nfl-game-team-copy strong,
+.player-hero-copy h1,
+.team-player-banner-copy h2,
+.quick-view-news article > strong,
+.lineup-player .player-name {
+  font-family: var(--font-ui) !important;
+  font-weight: 650;
+  letter-spacing: -.018em;
+  line-height: 1.2;
+  text-transform: none !important;
+}
+.broadcast-team-side .home-team-identity strong { font-size: clamp(19px, 2vw, 29px); }
+.roster-slot-name { font-size: clamp(17px, 1.8vw, 22px); }
+.lineup-decision-name { font-size: clamp(22px, 2.4vw, 31px); }
+.lineup-sheet-name { font-size: 19px; }
+.player-discovery-name { font-size: 17px; }
+.trade-target-name { font-size: clamp(19px, 2vw, 26px); }
+.lm-team-copy strong { font-size: clamp(13px, 1.25vw, 18px); }
+.nfl-game-team-copy strong { font-size: 14px; }
+.player-hero-copy h1 { font-size: clamp(34px, 4.8vw, 56px); }
+.team-player-banner-copy h2 { font-size: clamp(34px, 5vw, 54px) !important; line-height: 1.03 !important; }
+
+/* Keep Barlow Condensed for scoreboard numerals, projection moments, and the wordmark. */
+.home-score-reading strong,
+.home-team-current b,
+.broadcast-odds .home-win-labels b,
+.broadcast-game-day-points > strong,
+.roster-record-mark strong,
+.roster-summary-strip strong,
+.roster-slot-points strong,
+.roster-slot-projection strong,
+.decision-center > b,
+.lineup-sheet-score strong,
+.waiver-move-rank,
+.waiver-move-impact strong,
+.waiver-market-count strong,
+.waiver-market-rank,
+.waiver-market-stat strong,
+.trade-verdict-pair > div > strong,
+.trade-empty-inline > strong,
+.trade-suggested-index,
+.player-discovery-rank,
+.player-discovery-numbers b,
+.lm-score-value strong,
+.lm-featured .lm-probability-labels b,
+.nfl-game-score,
+.sports-week-mark strong,
+.wordmark-copy strong {
+  font-family: var(--font-display) !important;
+  font-variant-numeric: tabular-nums lining-nums;
+  text-transform: none;
+}
+@media (max-width: 700px) {
+  .roster-page-heading h1,
+  .start-sit-page-head h1,
+  .waiver-market-top h1,
+  .trade-desk-heading h1,
+  .player-discovery-hero h1,
+  .nfl-schedule-heading h1 { font-size: clamp(28px, 8vw, 36px); }
+  .lm-page-head h2 { font-size: clamp(27px, 7vw, 34px); }
+}

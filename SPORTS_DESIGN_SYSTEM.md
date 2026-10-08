@@ -33,8 +33,8 @@ Primary gradient: `linear-gradient(105deg, var(--acid) 0%, var(--chartreuse) 48%
 
 ## Typography
 
-- Display / score face: Barlow Condensed when served locally through `next/font/local`; fallback `Impact, "Arial Narrow", sans-serif`.
-- Interface / body: Manrope or the existing system stack, with local font assets preferred to avoid remote requests.
+- Display / score face: Barlow Condensed for large scores, projected totals, and the brand wordmark only.
+- Interface / body: [IBM Plex Sans](https://github.com/IBM/plex) for player and team names, page and section headings, navigation, controls, and explanatory text. IBM Plex is licensed under the [SIL Open Font License](https://github.com/IBM/plex/blob/master/packages/plex-sans/LICENSE.txt).
 - Scores use tabular lining numerals and tight tracking. They should be the largest element on score surfaces.
 - Player and team names use strong mixed-case typography; metadata is quieter and brief.
 - Section labels may use uppercase selectively, but headlines are not all-caps by default.
