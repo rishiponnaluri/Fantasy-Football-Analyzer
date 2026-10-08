@@ -1,91 +1,33 @@
-# Sports UI research
+# Editorial Sports UI research
 
-Research completed before Stage 1 implementation on `ui-sports-overhaul-v2` (October 2026). The references below informed interaction and visual decisions only. No source code, brand assets, team marks, photographs, or proprietary layouts were copied.
+This research informed Stage 1 of `ui-editorial-sports-v3`. References were inspected for hierarchy and interaction patterns; no third-party code, logos, fonts, or artwork were copied.
 
-## GitHub sports projects
+## GitHub projects
 
-### Scoreboards
+| Project | URL | License | Observed ideas | Rejected / use here |
+| --- | --- | --- | --- | --- |
+| Scoreboards Web | https://github.com/Zaker237/scoreboardsweb | MIT | A compact competition selector paired with match rows makes live scores easy to scan without making every game a large widget. | Its component-library/shadcn presentation is not the visual template. Use only the score-first grouping idea. No code or assets adapted. |
+| Fantasy Football Draft Toolkit | https://github.com/justinmck/fantasy-football-draft-toolkit | MIT | Dense player discovery benefits from clear identity first, then a few comparable stats and direct actions. | Do not reuse its draft-board layout or colors. Used as interaction reference only; no code adapted. |
+| Campos | https://github.com/withqwerty/campos | MIT | Football-specific visualizations can encode team/game context directly rather than wrapping every value in a generic metric card. | Its visualization library is not used as a dependency. No code or assets adapted. |
 
-- Repository: [Zaker237/scoreboardsweb](https://github.com/Zaker237/scoreboardsweb)
-- Demo: [scoreboards.cm](https://scoreboards.cm/)
-- License: MIT (confirmed in the repository's `LICENSE` file).
-- Observed: responsive football scoreboard with live/upcoming/finished states, competition discovery, date selection, score rows, and event detail.
-- Useful: date and game-state controls sit close to the score feed; rows make live status and score readable without opening every game.
-- Not useful for this app: the demo's competition sidebar and three-column panel arrangement still feels like a generic dashboard, and the repeated panel treatment weakens game hierarchy.
-- Influence: use state-first score ordering and compact score rows, while building a single sports masthead and page-specific compositions rather than copying its panels.
-- Code adapted: no.
+Licenses were checked in each repository's license file/page before deciding not to copy implementation. All projects are permissively licensed, but this work uses them as references only.
 
-### SPORTS
+## Public sports interfaces
 
-- Repository: [vincenzo-afk/SPORTS](https://github.com/vincenzo-afk/SPORTS)
-- License: MIT (repository `LICENSE` and GitHub license metadata checked).
-- Observed: responsive, dark live-score center with match state filters, events, standings, favorites, and match details. Its type and data contracts are typed for React and TypeScript.
-- Useful: LIVE / UPCOMING / FINISHED is treated as a first-class organizing dimension; score and clock lead, with lineups and event context revealed deeper in the match view.
-- Not useful for this app: a broad multi-sport control surface would be excessive for a focused fantasy-football home screen.
-- Influence: state-specific hierarchy and progressive detail; no copied visual components.
-- Code adapted: no.
+These sites were visually inspected at their public pages on 2026-10-07. Their branding, layout, wording, and assets remain their own.
 
-### Football Dashboard React
+| Interface | URL | Specific observations | Rejected / concept for this app |
+| --- | --- | --- | --- |
+| ESPN | https://www.espn.com/ | Strong lead story and image own the page; score information is grouped tightly in a horizontal strip, while article hierarchy is carried by type and image size. | Do not reproduce ESPN's red identity or exact module arrangement. Borrow the contrast between a large feature and compact scores. |
+| The Athletic | https://www.nytimes.com/athletic/ | Editorial headlines and a large lead image create a calm reading rhythm; scores sit in a compact live strip rather than competing as repeated dashboard cards. | Do not copy its publication branding or article grid. Use less chrome and more whitespace between distinct content zones. |
+| NFL | https://www.nfl.com/ | Team marks and score/state carry the matchup; competition and week controls remain compact, and team color is localized to team identity. | Avoid the branded league artwork and exact scoreboard presentation. Keep team color attached to the matchup rather than the whole app. |
+| Sleeper | https://sleeper.com/ | Dark fantasy product with quick score scanning and compact game rows; the team/player identity stays near the score. | Its dark navy, app-native density is too close to the previous dark product direction. Keep the scan speed but use warmer neutral surroundings. |
+| FotMob | https://www.fotmob.com/ | Flat grouped match rows and clear team badges make many games scannable; its page gives editorial news a distinct column instead of turning everything into cards. | Avoid its football/soccer terminology and left-rail composition. Use flat grouped results and a separate visual feature. |
+| Yahoo Sports | https://sports.yahoo.com/ | A lead image and a compact right-side live/news list separate reading from score scanning. | The page is visually busy and ad-led; do not adopt the banner density. Use the separation of feature and live feed. |
+| CBS Sports | https://www.cbssports.com/ | Compact sport navigation and a small matchup strip coexist with a large editorial story and secondary headlines. | Avoid its exact dense nav and branded colors. Use hierarchy with one prominent visual story and quieter supporting content. |
 
-- Repository: [sanginchun/football-dashboard-react](https://github.com/sanginchun/football-dashboard-react)
-- License: no license file was found in the repository root or GitHub license metadata. Treat as all-rights-reserved; no source or assets reused.
-- Observed: React SPA for league/team exploration with routed league, team, and home views.
-- Useful: the domain is separated into league and team destinations, which helps navigation stay sports-oriented rather than tool-oriented.
-- Not useful for this app: the project is older, its README calls out mobile view as future work, and its sidebar/cards are close to the app structures we are moving away from.
-- Influence: only the idea that league and team should be direct destinations; no code adapted.
-- Code adapted: no.
+## Stage 1 direction: Editorial Sports
 
-### Campos
+The app shell uses graphite and warm charcoal, with warm white and gray type. Lime is reserved for interaction and live state. Fantasy-team and NFL colors provide local identity. Dashboard becomes a score-led broadcast composition placed directly on the page, with the player's game-day rail treated as a photographic feature. Players becomes a neutral discovery directory. Start/Sit becomes an editorial player comparison with the decision sentence between the two players. These are page-specific compositions; the goal is not to introduce a new universal card.
 
-- Repository: [withqwerty/campos](https://github.com/withqwerty/campos)
-- Documentation: [campos.withqwerty.com](https://campos.withqwerty.com)
-- License: MIT (repository `LICENSE` checked).
-- Observed: React-first TypeScript football visualization components.
-- Useful: sports visuals should be built from domain primitives (field, match, player, and stat) rather than one universal dashboard card.
-- Not useful for this task: this app's NFL/fantasy data models differ, so importing a component package would add code and constrain the design.
-- Influence: use named sports primitives such as scoreboard stages, lineup lanes, and player spotlights as our own components.
-- Code adapted: no.
-
-## Public sports products
-
-### NFL.com Scores
-
-- URL: [nfl.com/scores](https://www.nfl.com/scores)
-- License: proprietary NFL site; visual reference only.
-- Observed: a football-specific score center uses a week rail and day grouping; matchup rows combine team marks, compact names, strong score numerals, and broadcast/state treatment.
-- Useful: date and week navigation are part of the schedule context, and team identity is carried by logos and color blocks rather than metadata labels.
-- Not useful for this app: official NFL branding, advertising placements, and large editorial promotions do not belong in a fantasy product.
-- Influence: condensed sports display typography, week-aware framing, confident score scale, and team color limited to the team zone.
-
-### Sleeper Scores
-
-- URL: [sleeper.com](https://sleeper.com/)
-- License: proprietary product; visual reference only.
-- Observed: dark fantasy-focused score center with a direct Scores entry, game/date grouping, team marks, live states, and compact matchup scanning.
-- Useful: fantasy users can scan multiple live scores quickly without opening each matchup; the fantasy context remains visible around the scores.
-- Not useful for this app: the dense multi-column presentation and blue-heavy palette are not the chosen direction.
-- Influence: keep league activity and the personal matchup within one sports home, but give the user's matchup one bespoke broadcast composition.
-
-### FotMob
-
-- URL: [fotmob.com/live](https://www.fotmob.com/live)
-- License: proprietary product; visual reference only.
-- Observed: live/upcoming match list, date selection, favorites/competition filtering, and a match-center path for deeper detail.
-- Useful: the list is organized around the event state and time, and the detail view is a deliberate next step rather than forcing every statistic into the feed.
-- Not useful for this app: soccer-specific controls, league density, and its light/dark branding are not directly transferable.
-- Influence: progressive disclosure and state-aware game rail; use fantasy matchup/player concepts instead of a copied fixture list.
-
-### SofaScore
-
-- URL: [sofascore.com](https://www.sofascore.com/)
-- License: proprietary product; visual reference only.
-- Observed: Today/live/finished filters, favorites and competition controls, score-first fixtures, and separate player/team/match centers.
-- Useful: activity state filters remain close to the event list, while richer context is opened only for the selected event.
-- Not useful for this app: the information density and broad all-sports navigation would overwhelm casual fantasy users.
-- Influence: state is visible at a glance and details are opt-in; no component layout copied.
-
-## Research decision
-
-The experiment uses an original **Sunday Broadcast** direction: a sports-site masthead; a wide, asymmetrical fantasy scoreboard stage; a time-ordered game-day player rail; and a live/action column. Fantasy team identity owns the matchup colors, NFL team identity owns player accents, and the app's acid-lime-to-emerald range is reserved for controls, active state, and live emphasis. On mobile, the masthead collapses into a compact brand bar and a five-item bottom nav; the featured game remains the first and largest object.
-
-This direction deliberately avoids the sidebar, interchangeable metric cards, and centered analytics-card layout used by the current interface. It uses event-shaped compositions—scoreboard, player rail, action feed, and score ticker—rather than adding a gradient to the old component tree.
+Typography stays with the already-loaded IBM Plex Sans for product text and Barlow Condensed only for score-scale numbers. The Stage 1 nav is a restrained top site menu on desktop and a compact bottom bar on mobile. Existing data hooks, actions, routes, click targets, and calculations remain the source of behavior.
