@@ -15,7 +15,7 @@
     "test": "npm run test:backend && npm run test:live"
   },
   "devDependencies": {
-    "concurrently": "9.2.4"
+    "concurrently": "9.2.5"
   },
   "engines": {
     "node": ">=20.9"

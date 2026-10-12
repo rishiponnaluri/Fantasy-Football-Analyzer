@@ -1,8 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowRightLeft, Check, ChevronDown, Handshake, Search, TrendingUp, X } from 'lucide-react';
+import { gsap } from 'gsap';
+import { useGSAP } from '@gsap/react';
 import { fetchBackend, requestBackend } from '@/lib/api';
 import { FantasyMatchups, FantasyTeam, Player, points } from '@/lib/types';
 import { PlayerAvatar, PlayerStatusButton } from './player-quick-view';
@@ -13,7 +15,9 @@ type TargetRow = { player: ImpactPlayer; team_id: number; team_name: string; ana
 type TradeIdea = Analysis & { partner_team_id?: number; partner_team_name?: string; trade_category?: string; validation_type?: string; package_shape?: string };
 type TargetResponse = { trade_targets: TargetRow[]; suggestions?: TradeIdea[]; possible_trades_to_explore?: TradeIdea[]; research_trade_ideas?: TradeIdea[]; trade_categories?: Record<string, number>; best_trade_partners: { team_id: number; team_name: string; best_weekly_fit: number }[]; roster_needs: Record<string, { label: string }>; search_mode?: 'league_wide' | 'specific_team'; mode?: 'conservative' | 'balanced' | 'aggressive'; positions?: string[]; message: string | null; last_updated: string };
 const targetRequestCache = new Map<string, { promise: Promise<TargetResponse>; expiresAt: number }>();
+const tradePlayerOrigins = new Map<number, { left: number; top: number }>();
 const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'FLEX'] as const;
+gsap.registerPlugin(useGSAP);
 
 function fetchTargets(week: number, positions: string[], searchMode: 'league_wide' | 'specific_team', teamId: number, mode: 'conservative' | 'balanced' | 'aggressive') {
   const key = `${week}:${positions.slice().sort().join(',')}:${searchMode}:${teamId}:${mode}`;
@@ -135,8 +139,26 @@ function SuggestedDealRow({ analysis, index, teams }: { analysis: Analysis; inde
 }
 
 function TradePlayerTile({ player, selected, onToggle }: { player: Player; selected: boolean; onToggle: () => void }) {
-  return <div className={`trade-pick-tile ${selected ? 'selected' : ''}`}>
-    <input type="checkbox" aria-label={`${selected ? 'Remove' : 'Select'} ${player.name} ${selected ? 'from' : 'for'} trade`} checked={selected} onChange={onToggle}/>
+  const tile = useRef<HTMLDivElement>(null);
+  useGSAP(() => {
+    const origin = !selected ? tradePlayerOrigins.get(player.player_id) : undefined;
+    if (!origin || !tile.current) return;
+    tradePlayerOrigins.delete(player.player_id);
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const target = tile.current.getBoundingClientRect();
+    gsap.fromTo(tile.current,
+      { x: origin.left - target.left, y: origin.top - target.top, scale: 0.96, autoAlpha: 0.65 },
+      { x: 0, y: 0, scale: 1, autoAlpha: 1, duration: 0.2, ease: 'power2.out', clearProps: 'transform,opacity,visibility' },
+    );
+  }, { scope: tile, dependencies: [selected], revertOnUpdate: true });
+  return <div ref={tile} className={`trade-pick-tile ${selected ? 'selected' : ''}`}>
+    <input type="checkbox" aria-label={`${selected ? 'Remove' : 'Select'} ${player.name} ${selected ? 'from' : 'for'} trade`} checked={selected} onChange={() => {
+      if (!selected && !window.matchMedia('(prefers-reduced-motion: reduce)').matches && tile.current) {
+        const { left, top } = tile.current.getBoundingClientRect();
+        tradePlayerOrigins.set(player.player_id, { left, top });
+      } else if (selected) tradePlayerOrigins.delete(player.player_id);
+      onToggle();
+    }}/>
     <PlayerAvatar player={player} size="md"/>
     <div className="trade-pick-player"><Link href={`/players/${player.player_id}`}>{player.name}</Link><span>{player.position || '--'} · {player.nfl_team || '--'}{player.lineup_slot ? ` · ${player.lineup_slot}` : ''}</span><PlayerStatusButton player={player}/></div>
     <strong>{points(player.custom_projection?.our_projection ?? player.projected_fantasy_points)}<small>proj.</small></strong>
@@ -145,11 +167,26 @@ function TradePlayerTile({ player, selected, onToggle }: { player: Player; selec
 }
 
 function ManualTradeTray({ give, receive, onRemove, onAnalyze, busy }: { give: Player[]; receive: Player[]; onRemove: (side: 'give' | 'receive', id: number) => void; onAnalyze: () => void; busy: boolean }) {
+  const tray = useRef<HTMLElement>(null);
+  useGSAP(() => {
+    const chips = tray.current?.querySelectorAll<HTMLElement>('[data-tray-player-id]');
+    chips?.forEach(chip => {
+      const id = Number(chip.dataset.trayPlayerId);
+      const origin = tradePlayerOrigins.get(id);
+      if (!origin) return;
+      tradePlayerOrigins.delete(id);
+      const target = chip.getBoundingClientRect();
+      gsap.fromTo(chip,
+        { x: origin.left - target.left, y: origin.top - target.top, scale: 0.94, autoAlpha: 0.65 },
+        { x: 0, y: 0, scale: 1, autoAlpha: 1, duration: 0.2, ease: 'power2.out', clearProps: 'transform,opacity,visibility' },
+      );
+    });
+  }, { scope: tray, dependencies: [give, receive], revertOnUpdate: true });
   if (!give.length && !receive.length) return null;
-  return <aside className="trade-floating-tray" aria-label="Selected trade">
-    <div className="trade-tray-side"><span>YOU GIVE</span>{give.length ? give.map(player => <button key={player.player_id} onClick={() => onRemove('give', player.player_id)} title={`Remove ${player.name}`}><img src={player.headshot_url || ''} alt=""/><b>{player.name}</b><X size={12}/></button>) : <small>Select from your roster</small>}</div>
+  return <aside ref={tray} className="trade-floating-tray" aria-label="Selected trade">
+    <div className="trade-tray-side"><span>YOU GIVE</span>{give.length ? give.map(player => <button data-tray-player-id={player.player_id} key={player.player_id} onClick={event => { if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) { const { left, top } = event.currentTarget.getBoundingClientRect(); tradePlayerOrigins.set(player.player_id, { left, top }); } onRemove('give', player.player_id); }} title={`Remove ${player.name}`}><img src={player.headshot_url || ''} alt=""/><b>{player.name}</b><X size={12}/></button>) : <small>Select from your roster</small>}</div>
     <ArrowRightLeft className="trade-tray-arrow" size={19}/>
-    <div className="trade-tray-side"><span>YOU GET</span>{receive.length ? receive.map(player => <button key={player.player_id} onClick={() => onRemove('receive', player.player_id)} title={`Remove ${player.name}`}><img src={player.headshot_url || ''} alt=""/><b>{player.name}</b><X size={12}/></button>) : <small>Select from their roster</small>}</div>
+    <div className="trade-tray-side"><span>YOU GET</span>{receive.length ? receive.map(player => <button data-tray-player-id={player.player_id} key={player.player_id} onClick={event => { if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) { const { left, top } = event.currentTarget.getBoundingClientRect(); tradePlayerOrigins.set(player.player_id, { left, top }); } onRemove('receive', player.player_id); }} title={`Remove ${player.name}`}><img src={player.headshot_url || ''} alt=""/><b>{player.name}</b><X size={12}/></button>) : <small>Select from their roster</small>}</div>
     <button className="trade-tray-analyze" onClick={onAnalyze} disabled={busy || !give.length || !receive.length}><ArrowRightLeft size={15}/>{busy ? 'Analyzing…' : 'Analyze trade'}</button>
   </aside>;
 }
