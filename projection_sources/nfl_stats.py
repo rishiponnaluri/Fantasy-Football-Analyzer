@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
+from projection_sources.cache import cached
 
 from projection_sources.cache import nflverse_csv
 
@@ -14,8 +14,13 @@ def nflverse_team(abbreviation: str | None) -> str | None:
     return TEAM_ALIASES.get(abbreviation, abbreviation) if abbreviation else None
 
 
-@lru_cache(maxsize=4)
 def season_data(year: int) -> dict:
+    value, _ = cached(f'nflverse:season-join:{year}', 1800,
+                      lambda: (_season_data(year), {'available': True}))
+    return value
+
+
+def _season_data(year: int) -> dict:
     """Build shared lookup maps once; source row freshness remains adapter-owned."""
     requests = {
         "player_stats": ("stats_player", f"stats_player_week_{year}.csv.gz"),

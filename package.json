@@ -10,9 +10,11 @@
     "start": "bash ./start.sh start",
     "build": "npm run build --workspace fantasy-football-dashboard",
     "typecheck": "npm run typecheck --workspace fantasy-football-dashboard",
-    "test:backend": ".venv/bin/python -m unittest -v test_trade_position_filters test_recommendation_reliability test_confidence test_trade_valuation test_nflverse_provider test_backend_live",
+    "test:backend": ".venv/bin/python -m unittest -v test_trade_position_filters test_recommendation_reliability test_confidence test_trade_valuation test_nflverse_provider test_projection_snapshot test_trade_assets test_player_news test_backend_live test_final_functionality",
     "test:live": "npm run test:live --workspace fantasy-football-dashboard",
-    "test": "npm run test:backend && npm run test:live"
+    "test": "npm run test:backend && npm run test:live",
+    "news:refresh": ".venv/bin/python scripts/refresh_player_news.py --force",
+    "news:watch": ".venv/bin/python scripts/refresh_player_news.py --watch"
   },
   "devDependencies": {
     "concurrently": "9.2.5"

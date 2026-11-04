@@ -235,7 +235,7 @@ def _team_players(team, insights, models, states, positional_empirical_sds=None)
             "nfl_team_logo_url": player.get("nfl_team_logo_url"),
             "injury_status": player.get("injury_status"), "nfl_opponent": player.get("nfl_opponent") or game.get("opponent_abbreviation"),
             "status": game["state"], "fixed": None, "current": current_points,
-            "engine_projection": custom_mean, "mean": current_points + remaining_mean, "remaining_mean": remaining_mean,
+            "recommendation_projection": model.get("recommendation_projection"), "projection_snapshot_id": model.get("snapshot_id"), "engine_projection": custom_mean, "mean": current_points + remaining_mean, "remaining_mean": remaining_mean,
             "custom_median": _number(model.get("median")), "custom_floor": _number(model.get("floor")),
             "custom_ceiling": _number(model.get("ceiling")),
             "sd": remaining_sd, "full_game_sd": custom_sd, "projection": projection,
@@ -414,7 +414,7 @@ def _team_result(team, players, scores):
     modeled_players = [{
         "player_id": player["player_id"], "name": player["name"], "status": player["status"],
         "current_points": player["current"], "espn_projection": player["projection"],
-        "custom_projection": player.get("engine_projection"), "expected_final_score": player["mean"],
+        "recommendation_projection": player.get("recommendation_projection"), "projection_snapshot_id": player.get("projection_snapshot_id"), "custom_projection": player.get("engine_projection"), "expected_final_score": player["mean"],
         "custom_distribution": {"median": player.get("custom_median"), "floor": player.get("custom_floor"),
                                 "ceiling": player.get("custom_ceiling"),
                                 "standard_deviation": player.get("full_game_sd")},
@@ -695,9 +695,9 @@ def _league_projection_inputs(service, matchups, week, insights):
     players = list(rostered.values())
     if not players:
         return {}, {}, {}
-    enriched, _ = enrich_players(players, service.league.year, week, service)
-    enriched_players = [enriched[player["player_id"]] for player in players]
-    models = project_players(enriched_players, week, service.league.current_week)
+    from projection_snapshot import resolve_players
+    enriched, _ = resolve_players(service, week, players)
+    models = {pid: player['custom_projection'] for pid, player in enriched.items()}
     return enriched, models, teams
 
 

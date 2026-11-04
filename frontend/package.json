@@ -7,13 +7,13 @@
     "build": "next build",
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "test:live": "node --test --test-concurrency=1 tests/backend-live.test.mjs"
+    "test:live": "node --test --test-concurrency=1 tests/backend-live.test.mjs tests/player-updates.test.mjs tests/score-display.test.mjs tests/final-functionality.test.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
     "gsap": "^3.15.0",
     "lucide-react": "1.49.0",
-    "next": "16.4.0",
+    "next": "16.4.5",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

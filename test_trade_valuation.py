@@ -62,5 +62,50 @@ class TradeValueAboveReplacementTest(unittest.TestCase):
         self.assertGreater(details["value_above_replacement_change"], 0)
 
 
+
+class TradeDirectionConfidenceTest(unittest.TestCase):
+    def classify(self, weekly, ros, replacement, uncertainty):
+        return _worth_it_verdict(
+            weekly, {'supported': True, 'difference': ros, 'uncertainty': uncertainty},
+            {'supported': True, 'difference': replacement, 'uncertainty': uncertainty},
+            [], {}, {'you_receive': [{'injury_status': 'ACTIVE'}]})
+
+    def test_all_negative_high_uncertainty_is_directional_low_confidence(self):
+        verdict, reason, detail = self.classify(-1.06, -10.54, -26.44, 64.25)
+        self.assertEqual(verdict, 'LEAN NO')
+        self.assertEqual(detail['confidence'], 'LOW')
+        self.assertAlmostEqual(detail['expected_value_change'], -27.5)
+        self.assertIn('-26.4', reason)
+
+    def test_all_positive_high_uncertainty_is_directional_low_confidence(self):
+        verdict, _, detail = self.classify(1.06, 10.54, 26.44, 64.25)
+        self.assertEqual(verdict, 'LEAN YES')
+        self.assertEqual(detail['confidence'], 'LOW')
+
+    def test_mixed_near_zero_trade_remains_even(self):
+        verdict, _, detail = self.classify(.2, -.2, -.1, 20)
+        self.assertEqual(verdict, 'EVEN')
+        self.assertEqual(detail['confidence'], 'LOW')
+
+    def test_consolidation_uses_replacement_value_not_raw_point_sum(self):
+        verdict, _, detail = self.classify(0, -40, 35, 100)
+        self.assertEqual(verdict, 'LEAN YES')
+        self.assertEqual(detail['confidence'], 'LOW')
+
+    def test_position_need_overpay_still_hits_independent_guardrail(self):
+        from trade_assets import apply_exchange_guardrail
+        from trade_service import _trade_verdict_confidence
+        verdict, reason, _ = self.classify(2, 20, 20, 100)
+        exchange = {'supported': True, 'material_overpay': True, 'severe_overpay': True,
+                    'difference': -120, 'uncertainty': 18}
+        self.assertEqual(apply_exchange_guardrail(verdict, reason, exchange)[0], 'NO')
+        self.assertEqual(_trade_verdict_confidence(-120, 18)[0], 'HIGH')
+
+    def test_trade_confidence_separates_one_and_two_sd_evidence(self):
+        self.assertEqual(self.classify(0, 15, 15, 10)[2]['confidence'], 'MEDIUM')
+        verdict, _, detail = self.classify(0, 25, 25, 10)
+        self.assertEqual((verdict, detail['confidence']), ('YES', 'HIGH'))
+        self.assertEqual(self.classify(0, 25, 25, None)[2]['confidence'], 'LOW')
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

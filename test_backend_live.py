@@ -451,7 +451,7 @@ class RealESPNBackendTest(unittest.TestCase):
         self.assertEqual(data["team_id"], self.my_team.team_id)
         self.assertEqual(data["week"], week)
         self.assertTrue(data["recommended_starters"])
-        self.assertTrue(data["legal_lineup"])
+        self.assertEqual(data["legal_lineup"], not data["unfilled_slots"])
         self.assertTrue(data["scoring_rules"]["position_slot_counts"])
         roster_ids = {player.playerId for player in self.my_team.roster}
         starters = data["recommended_starters"]
@@ -465,10 +465,29 @@ class RealESPNBackendTest(unittest.TestCase):
             slot = player["recommended_slot"]
             recommended_counts[slot] = recommended_counts.get(slot, 0) + 1
             self.assertIn(slot, player["eligible_positions"], f"{player['name']} is not ESPN-eligible for {slot}")
+            self.assertNotEqual(player.get("bye_week"), week)
+            self.assertNotIn((player.get("injury_status") or "").upper().replace(" ", "_"),
+                             {"OUT", "IR", "INJURED_RESERVE", "SUSPENDED", "PUP"})
         for slot, count in recommended_counts.items():
             self.assertLessEqual(count, slot_counts[slot])
-        self.assertEqual(sum(recommended_counts.values()), sum(slot_counts.values()))
-        self.assertEqual(recommended_counts, slot_counts)
+        # Every required spot must be accounted for, either by an eligible
+        # starter or explicitly as unfilled. A BYE-only D/ST is not a starter.
+        accounted_counts = dict(recommended_counts)
+        for label in data["unfilled_slots"]:
+            slot = "RB/WR/TE" if label == "FLEX" else label.rstrip("0123456789")
+            self.assertIn(slot, slot_counts)
+            accounted_counts[slot] = accounted_counts.get(slot, 0) + 1
+            eligible_bench = [p for p in bench if slot in p.get("eligible_positions", [])
+                              and p.get("bye_week") != week
+                              and p.get("lineup_status") in {"available", "bench", "starter", "unassigned"}
+                              and (p.get("injury_status") or "").upper().replace(" ", "_")
+                              not in {"OUT", "IR", "INJURED_RESERVE", "SUSPENDED", "PUP"}]
+            self.assertEqual(eligible_bench, [], f"An eligible bench option could fill {label}")
+        self.assertEqual(len(starters) + len(data["unfilled_slots"]), sum(slot_counts.values()))
+        self.assertEqual(accounted_counts, slot_counts)
+        self.assertEqual(len(starters) + len(bench), len(roster_ids))
+        self.assertTrue(all(p["player_id"] in {b["player_id"] for b in bench}
+                            for p in starters + bench if p.get("bye_week") == week))
         self.assertTrue(data["model"])
         self.assertIn("ESPN", data["model"])
         for player in starters:
@@ -695,6 +714,58 @@ class RealESPNBackendTest(unittest.TestCase):
                      "/api/players/0"):
             data = self.get_json(path, 422)
             self.assertIn("error", data)
+
+
+    def test_shared_projection_snapshot_across_roster_detail_recommendations_and_trades(self):
+        from unittest.mock import patch
+        from main import get_espn_service
+        payload = self.get_json('/api/projections')
+        week, sid = payload['week'], payload['snapshot_id']
+        suffix = f'week={week}&snapshot_id={sid}'
+        by_id = {r['player_id']: r['projection']['recommendation_projection'] for r in payload['players']}
+        own = self.get_json(f'/api/my-team?{suffix}')
+        for player in own['roster']:
+            self.assertEqual(player['custom_projection']['recommendation_projection'], by_id[player['player_id']])
+            self.assertEqual(player['projection_snapshot_id'], sid)
+        advice = self.get_json(f'/api/start-sit?{suffix}')
+        for player in advice['recommended_starters'] + advice['bench']:
+            self.assertEqual(player['recommendation_projection'], by_id[player['player_id']])
+        service = get_espn_service()
+        pid = own['roster'][0]['player_id']
+        with service._memo_lock:
+            for key in list(service._memo_cache):
+                if key[0] == 'player_info': service._memo_cache.pop(key)
+        with patch('projection_sources.espn._build_league_projection_payload', side_effect=AssertionError('Quick View rebuilt league projections')), \
+             patch('projection_sources.context.enrich_players', side_effect=AssertionError('Quick View fanned out context providers')), \
+             patch('player_news.refresh', side_effect=AssertionError('Quick View refreshed roster news')):
+            for _ in range(2):
+                detail = self.get_json(f'/api/players/{pid}?{suffix}')
+                self.assertEqual(detail['custom_projection']['recommendation_projection'], by_id[pid])
+                self.assertEqual(detail['projection_snapshot_id'], sid)
+        self.assertIsInstance(detail['latest_updates'], list)
+        for update in detail['latest_updates']:
+            self.assertEqual(update['player_id'], pid)
+            self.assertTrue(update['headline'] and update['source'])
+        with patch.object(service, '_fetch_player_info', side_effect=AssertionError('Warm Quick View fetched ESPN again')), \
+             patch('projection_sources.cache._HTTP.get', side_effect=AssertionError('Stored updates caused provider fanout')), \
+             patch('player_news.refresh', side_effect=AssertionError('Stored updates triggered news job')):
+            cached_detail = self.get_json(f'/api/players/{pid}?{suffix}')
+            self.assertEqual(cached_detail['latest_updates'], detail['latest_updates'])
+            stored = self.get_json(f'/api/players/{pid}/updates?week={week}')
+            self.assertTrue(all(row['player_id'] == pid for row in stored['updates']))
+        matchups = self.get_json(f'/api/fantasy-matchups?{suffix}')
+        other = next(team for matchup in matchups['fantasy_matchups'] for team in
+                     (matchup.get('home_team'), matchup.get('away_team')) if team and team['team_id'] != own['team_id'])
+        analysis = self.post_json(f'/api/trades/analyze?{suffix}', {
+            'week': week, 'team_id': other['team_id'], 'give_player_ids': [pid],
+            'receive_player_ids': [other['roster'][0]['player_id']]})
+        self.assertIn(analysis['verdict']['worth_it_confidence'], {'HIGH', 'MEDIUM', 'LOW'})
+        self.assertTrue(analysis['verdict']['worth_it_confidence_reason'])
+        for player in analysis['you_give'] + analysis['you_receive']:
+            self.assertEqual(player['weekly_projection'], by_id[player['player_id']])
+            self.assertEqual(player['projection_snapshot_id'], sid)
+        again = self.get_json(f'/api/projections?{suffix}')
+        self.assertEqual(again, payload)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ These controlled projections exercise numerical safety boundaries only; runtime
 player data always comes from ESPN and the connected projection/context sources.
 """
 import unittest
+from copy import deepcopy
 
 from recommendation_service import assess_start_sit_swap, confidence_aware_value, optimize_lineup
 
@@ -35,6 +36,7 @@ class ConfidenceAwareRecommendationTests(unittest.TestCase):
 
         starters = result["starters"]
         self.assertTrue(result["legal_lineup"])
+        self.assertEqual(result["unfilled_slots"], [])
         self.assertEqual(len(starters), 9)
         self.assertEqual(len({player["player_id"] for player in starters}), 9)
         self.assertEqual(sum(player["recommended_slot"] == "QB" for player in starters), 1)
@@ -50,6 +52,48 @@ class ConfidenceAwareRecommendationTests(unittest.TestCase):
         flex = next(player for player in starters if player["recommended_slot"] == "RB/WR/TE")
         self.assertIn(flex["position"], {"RB", "WR", "TE"})
         self.assertIn(collins["recommended_slot_label"], {"WR1", "WR2", "FLEX"})
+
+    def test_bye_only_defense_leaves_slot_unfilled_and_preserves_other_optimal_starters(self):
+        slots = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "RB/WR/TE": 1, "K": 1, "D/ST": 1}
+        positions = ["QB", "RB", "RB", "WR", "WR", "TE", "RB", "K", "D/ST", "WR"]
+        roster = [{"player_id": index, "name": f"Player {index}", "position": position,
+                   "lineup_status": "bench", "bye_week": 9 if position == "D/ST" else 12,
+                   "eligible_positions": [position, "RB/WR/TE"] if position in {"RB", "WR", "TE"} else [position],
+                   "custom_projection": {"our_projection": 10 + index}}
+                  for index, position in enumerate(positions)]
+        original = deepcopy(roster)
+        for confidence_aware in (False, True):
+            with self.subTest(confidence_aware=confidence_aware):
+                complete = optimize_lineup(roster, slots, week=8, confidence_aware=confidence_aware)
+                incomplete = optimize_lineup(roster, slots, week=9, confidence_aware=confidence_aware)
+                self.assertTrue(complete["legal_lineup"])
+                self.assertEqual(complete["unfilled_slots"], [])
+                self.assertEqual(len(complete["starters"]), 9)
+                self.assertFalse(incomplete["legal_lineup"])
+                self.assertEqual(incomplete["unfilled_slots"], ["D/ST"])
+                self.assertEqual(len(incomplete["starters"]), 8)
+                self.assertEqual(
+                    [(p["player_id"], p["recommended_slot"], p["expected_points"]) for p in incomplete["starters"]],
+                    [(p["player_id"], p["recommended_slot"], p["expected_points"]) for p in complete["starters"]
+                     if p["recommended_slot"] != "D/ST"])
+                defense = next(p for p in incomplete["bench"] if p["position"] == "D/ST")
+                self.assertEqual(defense["bye_week"], 9)
+                self.assertEqual(defense["custom_projection"], original[8]["custom_projection"])
+                self.assertEqual(len({p["player_id"] for p in incomplete["starters"] + incomplete["bench"]}), len(roster))
+                available_again = optimize_lineup(roster, slots, week=10, confidence_aware=confidence_aware)
+                self.assertTrue(available_again["legal_lineup"])
+                self.assertEqual(available_again["starters"], complete["starters"])
+        self.assertEqual(roster, original, "Optimization must not mutate BYE state or projection inputs")
+
+    def test_missing_required_position_is_reported_without_discarding_eligible_players(self):
+        roster = [{"player_id": 1, "name": "Quarterback", "eligible_positions": ["QB"],
+                   "lineup_status": "starter", "custom_projection": {"our_projection": 20}}]
+        result = optimize_lineup(roster, {"QB": 1, "D/ST": 1}, week=9, confidence_aware=True)
+        self.assertFalse(result["legal_lineup"])
+        self.assertEqual(result["unfilled_slots"], ["D/ST"])
+        self.assertEqual([p["player_id"] for p in result["starters"]], [1])
+        self.assertEqual(result["starters"][0]["recommended_slot"], "QB")
+        self.assertEqual(result["bench"], [])
 
     def test_missing_confidence_and_extreme_custom_disagreement_shrink_to_real_references(self):
         incumbent = {

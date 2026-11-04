@@ -11,6 +11,7 @@ from espn_service import APIError
 from projection_engine import project_players
 from projection_sources.context import enrich_players
 from recommendation_service import optimize_lineup, roster_needs
+from trade_assets import attach_assets, exchange_value, apply_exchange_guardrail, plausible_exchange
 
 
 def _number(value):
@@ -43,34 +44,14 @@ def _prepare(service, other_team_id: int, selected: int | None):
     other["_league_rosters"] = all_rosters
     raw_players = [dict(player, fantasy_team_id=team["team_id"], fantasy_team_name=team["team_name"])
                    for team in (my, other) for player in team["roster"]]
-    ids = [player["player_id"] for player in raw_players]
-    insight = {}
-    for offset in range(0, len(ids), 50):
-        insight.update(service.player_insights(ids[offset:offset + 50], week))
-    players = []
-    for original in raw_players:
-        detail = insight.get(original["player_id"], {})
-        merged = {**detail, **original}
-        # Player card carries historical stats, position eligibility, and bye
-        # data; ESPN's selected-week roster remains authoritative for points/slot.
-        for key in ("game_log", "season_fantasy_average", "season_fantasy_points", "eligible_positions",
-                    "bye_week", "nfl_opponent", "nfl_game_time", "jersey_number", "age", "height", "weight"):
-            if original.get(key) is None and detail.get(key) is not None:
-                merged[key] = detail[key]
-        players.append(merged)
-    enriched, source_status = enrich_players(players, service.league.year, week, service)
+    from projection_snapshot import resolve_players
+    enriched, source_status = resolve_players(service, week, raw_players)
     normalized = list(enriched.values())
-    projected = project_players(normalized, week, service.league.current_week)
     for player in normalized:
-        model = projected[player["player_id"]]
-        player["trade_projection"] = model
-        player["custom_projection"] = model
-        player["espn_projected_fantasy_points"] = player.get("projected_fantasy_points")
-        if _number(model.get("our_projection")):
-            player["projected_fantasy_points"] = model["our_projection"]
-            player["trade_projection_source"] = "custom_projection_engine"
-        else:
-            player["trade_projection_source"] = "ESPN projection or season-average fallback"
+        player['trade_projection'] = player['custom_projection']
+        player['espn_projected_fantasy_points'] = player.get('projected_fantasy_points')
+        player['trade_projection_source'] = 'canonical recommendation snapshot'
+    attach_assets(service, week, normalized)
     rules = service.recommendation_settings()
     return week, my, other, normalized, rules, source_status
 
@@ -84,7 +65,7 @@ def _team_state(team, players, rules, week):
     state_key = (team["team_id"], tuple(sorted(player["player_id"] for player in roster)))
     if state_cache is not None and state_key in state_cache:
         return state_cache[state_key]
-    lineup = optimize_lineup(roster, rules["position_slot_counts"], week)
+    lineup = optimize_lineup(roster, rules["position_slot_counts"], week, confidence_aware=True)
     starter_ids = {player["player_id"] for player in lineup["starters"]}
     positions = {}
     comparisons = []
@@ -98,11 +79,11 @@ def _team_state(team, players, rules, week):
     for position in ("QB", "RB", "WR", "TE", "K", "D/ST"):
         group = [player for player in roster if player.get("position") == position]
         starters = [player for player in lineup["starters"] if player.get("position") == position]
-        bench_values = [float(player["trade_projection"]["our_projection"]) for player in group
-                        if player["player_id"] not in starter_ids and _number((player.get("trade_projection") or {}).get("our_projection"))]
-        starter_values = [float(player["trade_projection"]["our_projection"]) for player in starters
-                          if _number((player.get("trade_projection") or {}).get("our_projection"))]
-        values = [player.get("trade_projection", {}).get("our_projection") for player in group]
+        bench_values = [float(player["trade_projection"].get("recommendation_projection", player["trade_projection"].get("our_projection"))) for player in group
+                        if player["player_id"] not in starter_ids and _number((player.get("trade_projection") or {}).get("recommendation_projection", (player.get("trade_projection") or {}).get("our_projection")))]
+        starter_values = [float(player["trade_projection"].get("recommendation_projection", player["trade_projection"].get("our_projection"))) for player in starters
+                          if _number((player.get("trade_projection") or {}).get("recommendation_projection", (player.get("trade_projection") or {}).get("our_projection")))]
+        values = [player.get("trade_projection", {}).get("recommendation_projection", player.get("trade_projection", {}).get("our_projection")) for player in group]
         values = [float(value) for value in values if _number(value)]
         need = max(0, int(rules["position_slot_counts"].get(position, 0)) - len(starters))
         positions[position] = {"rostered": len(group), "starting_slots": int(rules["position_slot_counts"].get(position, 0)),
@@ -312,14 +293,32 @@ def _value_above_replacement(service, week, before_state, after_state, players, 
             "method": "For each affected position, compare remaining-season value with the best usable same-position bench option on your roster. This measures value beyond the next player you could use; in a consolidation, it also accounts for the replacement-level roster spot you open."}
 
 
-def _worth_it_verdict(weekly_delta, value_fit, replacement_fit, position_improved, depth_impact, risk):
-    """Classify the user's side from expected value and its measured uncertainty.
+# The existing half-point materiality threshold is about expected benefit,
+# while SD bands describe how confidently that direction can be established.
+TRADE_NEUTRAL_POINTS = 0.5
 
-    One- and two-standard-deviation bands come from the traded players'
-    existing modeled uncertainty. The weekly change and rest-of-season
-    value-above-replacement change are kept in point units and combined once;
-    the replacement comparison avoids counting a replaceable bench player's
-    full production as lost value.
+
+def _trade_verdict_confidence(expected_change, uncertainty, supported=True):
+    """Trade-estimate confidence, separate from player projection confidence."""
+    if not supported or not _number(uncertainty) or not math.isfinite(uncertainty) or uncertainty <= 0:
+        return "LOW", "The trade estimate lacks a complete, measurable uncertainty comparison."
+    if abs(expected_change) <= TRADE_NEUTRAL_POINTS:
+        confidence = "HIGH" if abs(expected_change) + uncertainty <= TRADE_NEUTRAL_POINTS else "LOW"
+        return confidence, "The central estimate is approximately neutral; uncertainty is assessed separately."
+    separation = abs(expected_change) / uncertainty
+    confidence = "HIGH" if separation > 2 else "MEDIUM" if separation > 1 else "LOW"
+    return confidence, (f"The expected value change is {expected_change:+.2f} points against a "
+                        f"{uncertainty:.2f}-point modeled uncertainty band. This is trade confidence, not win probability or player projection confidence.")
+
+
+def _worth_it_verdict(weekly_delta, value_fit, replacement_fit, position_improved, depth_impact, risk):
+    """Direction follows expected roster value; uncertainty determines confidence.
+
+    Preserve weekly + ROS-above-replacement arithmetic. A central change within
+    half a point is EVEN. Outside that neutral zone, use a directional lean;
+    more than two SDs supports the strongest YES/NO label. Position labels do
+    not reverse negative central estimates. Asset overpay protection is applied
+    independently afterward.
     """
     value_delta = (replacement_fit.get("difference") if replacement_fit.get("supported")
                    else value_fit.get("difference"))
@@ -330,39 +329,14 @@ def _worth_it_verdict(weekly_delta, value_fit, replacement_fit, position_improve
     if not _number(value_delta):
         value_delta = 0.0
     net_value = float(weekly_delta or 0.0) + float(value_delta)
-    if uncertainty_available:
-        uncertainty = float(uncertainty)
-        if net_value > 2 * uncertainty:
-            worth = "YES"
-        elif net_value > uncertainty:
-            worth = "LEAN YES"
-        elif net_value >= -uncertainty:
-            worth = "EVEN"
-        elif net_value > -2 * uncertainty:
-            worth = "LEAN NO"
-        else:
-            worth = "NO"
-    elif net_value > 0:
-        # Missing uncertainty is not evidence that the estimate is precise.
-        worth = "LEAN YES"
-    elif net_value < 0:
-        worth = "LEAN NO"
-    else:
+    if abs(net_value) <= TRADE_NEUTRAL_POINTS:
         worth = "EVEN"
-
-    if uncertainty_available and -uncertainty <= net_value <= uncertainty:
-        weak_position_depth_gain = any(
-            change.get("usable_depth_change", 0) > 0
-            and change.get("strength_before") in {"Weak", "Weak depth", "Needs improvement"}
-            for change in depth_impact.values())
-        weak_position_depth_loss = any(
-            change.get("usable_depth_change", 0) < 0
-            and change.get("strength_before") in {"Weak", "Weak depth", "Needs improvement"}
-            for change in depth_impact.values())
-        if net_value > 0 and (position_improved or weak_position_depth_gain):
-            worth = "LEAN YES"
-        elif net_value < 0 and weak_position_depth_loss:
-            worth = "LEAN NO"
+    elif uncertainty_available and uncertainty > 0 and abs(net_value) > 2 * uncertainty:
+        worth = "YES" if net_value > 0 else "NO"
+    else:
+        worth = "LEAN YES" if net_value > 0 else "LEAN NO"
+    confidence, confidence_reason = _trade_verdict_confidence(
+        net_value, uncertainty, bool(replacement_fit.get('supported') or value_fit.get('supported')))
 
     risky_incoming = any(str(item.get("injury_status") or "").upper().replace(" ", "_")
                          in {"QUESTIONABLE", "DOUBTFUL", "OUT", "IR", "INJURED_RESERVE", "PUP"}
@@ -399,7 +373,8 @@ def _worth_it_verdict(weekly_delta, value_fit, replacement_fit, position_improve
         if risky_incoming:
             worth_reason += " The incoming player's status makes this a cautious lean."
     elif worth == "EVEN":
-        worth_reason = "The expected gain is within the players' uncertainty, so neither side has a clear value edge."
+        worth_reason = (f"The central roster-value estimate is approximately neutral ({net_value:+.2f} points). "
+                        "Confidence describes the uncertainty separately.")
     else:
         if replacement_fit.get("supported"):
             worth_reason = (f"After accounting for your same-position replacements, the trade changes your rest-of-season value by about "
@@ -407,7 +382,12 @@ def _worth_it_verdict(weekly_delta, value_fit, replacement_fit, position_improve
         else:
             worth_reason = (f"Your best starting lineup changes by {weekly_delta:+.1f} points this week and the rest-of-season value estimate changes "
                             f"{value_fit.get('difference', 0):+.1f} points.")
-    return worth, worth_reason, {"expected_value_change": round(net_value, 2),
+    if risky_incoming and confidence == "HIGH":
+        confidence = "MEDIUM"
+        confidence_reason += " An unresolved incoming health status warrants caution."
+    return worth, worth_reason, {"confidence": confidence, "confidence_reason": confidence_reason,
+                                 "neutral_band": TRADE_NEUTRAL_POINTS,
+                                 "expected_value_change": round(net_value, 2),
                                  "uncertainty_band": round(float(uncertainty), 2) if uncertainty_available else None,
                                  "value_above_replacement_change": round(float(value_delta), 2),
                                  "position_improved": position_improved,
@@ -451,7 +431,7 @@ def _trade_result(service, week, own, other, players, rules, give_ids, receive_i
         return {"player_id": player["player_id"], "name": player["name"], "position": player.get("position"),
                 "nfl_team": player.get("nfl_team"), "headshot_url": player.get("headshot_url"),
                 "nfl_team_id": player.get("nfl_team_id"), "nfl_team_logo_url": player.get("nfl_team_logo_url"),
-                "weekly_projection": model.get("our_projection"), "espn_projection": player.get("espn_projected_fantasy_points"),
+                "weekly_projection": model.get("recommendation_projection", model.get("our_projection")), "projection_snapshot_id": model.get("snapshot_id"), "espn_projection": player.get("espn_projected_fantasy_points"),
                 "season_average": player.get("season_fantasy_average"), "confidence": model.get("confidence"),
                 "uncertainty": model.get("standard_deviation"), "bye_week": player.get("bye_week"),
                 "injury_status": player.get("injury_status"), "lineup_slot": player.get("lineup_slot"),
@@ -525,7 +505,7 @@ def _trade_result(service, week, own, other, players, rules, give_ids, receive_i
     result["rest_of_season_value_fit"] = value_fit
     replacement_fit = _value_above_replacement(service, week, own_state, own_after, players, give_ids, receive_ids)
     result["value_above_replacement"] = replacement_fit
-    uncertainty_values = [player.get("uncertainty") for player in give + receive]
+    uncertainty_values = [(player.get("trade_projection") or {}).get("standard_deviation") for player in give + receive]
     weekly_uncertainty = (round(math.sqrt(sum(float(value) ** 2 for value in uncertainty_values)), 2)
                           if uncertainty_values and all(_number(value) for value in uncertainty_values) else None)
     own_position_improved = [position for position, change in result["positional_impact"]["you"].items()
@@ -540,11 +520,17 @@ def _trade_result(service, week, own, other, players, rules, give_ids, receive_i
                         for position, change in result["positional_impact"]["you"].items()}
     worth, worth_reason, worth_details = _worth_it_verdict(
         own_delta, value_fit, replacement_fit, own_position_improved, own_depth_change, result["risk"])
+    exchange = exchange_value(players, give_ids, receive_ids)
+    result['asset_exchange'] = exchange
+    worth, worth_reason = apply_exchange_guardrail(worth, worth_reason, exchange)
+    if exchange.get('material_overpay'):
+        confidence, confidence_reason = _trade_verdict_confidence(exchange['difference'], exchange['uncertainty'])
+        worth_details.update(confidence=confidence, confidence_reason="Exchange-value guardrail: " + confidence_reason)
     if other_delta >= 1 and (other_ros is None or other_ros >= 0) and other_position_improved:
         acceptance, acceptance_reason = "HIGH", f"Their best starting lineup gains about {other_delta:+.1f} points per week, and they add help at {', '.join(other_position_improved)}."
     elif other_delta >= 0 and (other_ros is None or other_ros >= 0):
         acceptance, acceptance_reason = "MEDIUM", f"Their best lineup stays close ({other_delta:+.1f} points per week), and the offer gives them useful depth."
-    elif other_delta >= -1 and other_position_improved and (other_ros is None or other_ros >= -ros_neutral_band):
+    elif other_delta >= -1 and other_position_improved and (other_ros is None or other_ros >= -float(value_fit.get("uncertainty") or 0)):
         acceptance, acceptance_reason = "MEDIUM", f"Their best lineup changes very little ({other_delta:+.1f} points per week), while the trade helps at {', '.join(other_position_improved)}."
     elif other_delta < -2 and (other_ros is None or other_ros < 0):
         acceptance, acceptance_reason = "VERY LOW", f"Their best starting lineup loses about {abs(other_delta):.1f} points per week, with no rest-of-season gain to make up for it."
@@ -552,10 +538,12 @@ def _trade_result(service, week, own, other, players, rules, give_ids, receive_i
         acceptance, acceptance_reason = "LOW", f"Their best lineup changes by {other_delta:+.1f} points per week" + (f"; rest-of-season estimate changes {other_ros:+.1f}." if other_ros is not None else "; rest-of-season value is unavailable.")
     result["verdict"] = {
         "worth_it": worth, "worth_it_reason": worth_reason,
+        "worth_it_confidence": worth_details["confidence"],
+        "worth_it_confidence_reason": worth_details["confidence_reason"],
         "acceptance_likelihood": acceptance, "acceptance_reason": acceptance_reason,
         "weekly_uncertainty": weekly_uncertainty,
         "worth_it_breakdown": worth_details,
-        "method": "Your verdict combines this week's legal-lineup change with rest-of-season value above your best same-position bench replacement. One- and two-standard-deviation bands use the traded players' existing projection uncertainty. Roster need/depth describes fit; acceptance is calculated separately from the other manager's lineup, rest-of-season change, and position needs. Acceptance likelihood is a roster-fit category, not a probability or a claim about manager behavior, and it is not part of your verdict.",
+        "method": "Your verdict combines this week's legal-lineup change with rest-of-season value above your best same-position bench replacement. Central changes within half a point are EVEN; other changes carry direction, with more than two SDs supporting YES/NO. Confidence is HIGH beyond two SDs, MEDIUM beyond one, otherwise LOW. The separate exchange-value guardrail still rejects significant overpays. Roster need/depth describes fit; acceptance is calculated separately from the other manager's lineup, rest-of-season change, and position needs. Acceptance likelihood is a roster-fit category, not a probability or a claim about manager behavior, and it is not part of your verdict.",
     }
     return result
 
@@ -642,7 +630,11 @@ def suggestions(service, team_id: int, mode: str, selected: int | None, position
         for receiving in other_candidates:
             if not _matches_trade_positions(receiving, selected_positions):
                 continue
+            if not plausible_exchange(players, [giving['player_id']], [receiving['player_id']]):
+                continue
             result = _trade_result(service, week, own, other, players, rules, [giving["player_id"]], [receiving["player_id"]])
+            if result['verdict']['worth_it'] in {'NO', 'LEAN NO'}:
+                continue
             you_delta = result["weekly_lineup_change"]["you"]
             their_delta = result["weekly_lineup_change"]["other_team"]
             if you_delta is None or their_delta is None:
@@ -694,7 +686,7 @@ def league_targets(service, selected: int | None, position: str | None = None,
     target_ids = tuple(sorted({int(player_id) for player_id in (target_player_ids or [])}))
     selected_positions = _trade_position_set(position, positions)
     position_key = tuple(sorted(selected_positions)) if selected_positions is not None else None
-    key = ("league_trade_discovery", week, position_key, bool(include_research_ideas), target_ids, target_team_id)
+    key = ("league_trade_discovery", week, __import__("projection_snapshot").snapshot(service, week)["snapshot_id"], position_key, bool(include_research_ideas), target_ids, target_team_id)
     return service.memoized(key, ttl, lambda: _build_league_targets(
         service, week, position_key, include_research_ideas, target_ids, target_team_id))
 
@@ -732,12 +724,9 @@ def _build_league_targets(service, week: int, position: str | None = None,
         player["trade_projection"] = model
         player["custom_projection"] = model
         player["espn_projected_fantasy_points"] = player.get("projected_fantasy_points")
-        if _number(model.get("our_projection")):
-            player["projected_fantasy_points"] = model["our_projection"]
-            player["trade_projection_source"] = "custom_projection_engine"
-        else:
-            player["trade_projection_source"] = "ESPN projection or season-average fallback"
+        player['trade_projection_source'] = 'canonical recommendation snapshot'
         normalized.append(player)
+    attach_assets(service, week, normalized)
     source_status = projection_data.get("source_status", {})
 
     rules = service.recommendation_settings()
@@ -817,8 +806,12 @@ def _build_league_targets(service, week: int, position: str | None = None,
         candidates = []
         for receiving in target_pool[:10]:
             for giving in give_pool[:12]:
+                if not plausible_exchange(normalized, [giving['player_id']], [receiving['player_id']]):
+                    continue
                 result = _trade_result(service, week, own, other, normalized, rules,
                                        [giving["player_id"]], [receiving["player_id"]])
+                if result['verdict']['worth_it'] in {'NO', 'LEAN NO'}:
+                    continue
                 you_delta = result["weekly_lineup_change"]["you"]
                 their_delta = result["weekly_lineup_change"]["other_team"]
                 if not (_number(you_delta) and _number(their_delta)):
@@ -895,8 +888,8 @@ def _build_league_targets(service, week: int, position: str | None = None,
             desired_targets.sort(key=lambda player: (
                 player.get("player_id") in target_player_ids,
                 player.get("lineup_status") == "bench",
-                (player.get("trade_projection") or {}).get("our_projection") is not None,
-                (player.get("trade_projection") or {}).get("our_projection") or -999), reverse=True)
+                (player.get("trade_projection") or {}).get("recommendation_projection", (player.get("trade_projection") or {}).get("our_projection")) is not None,
+                (player.get("trade_projection") or {}).get("recommendation_projection", (player.get("trade_projection") or {}).get("our_projection")) or -999), reverse=True)
             if target_player_ids:
                 explicit = [player for player in desired_targets if player.get("player_id") in target_player_ids]
                 usual = [player for player in desired_targets if player.get("player_id") not in target_player_ids]
@@ -910,8 +903,8 @@ def _build_league_targets(service, week: int, position: str | None = None,
             assets.sort(key=lambda player: (
                 player.get("position") in partner_weak,
                 player.get("lineup_status") == "bench",
-                (player.get("trade_projection") or {}).get("our_projection") is not None,
-                (player.get("trade_projection") or {}).get("our_projection") or -999), reverse=True)
+                (player.get("trade_projection") or {}).get("recommendation_projection", (player.get("trade_projection") or {}).get("our_projection")) is not None,
+                (player.get("trade_projection") or {}).get("recommendation_projection", (player.get("trade_projection") or {}).get("our_projection")) or -999), reverse=True)
             assets = assets[:4]
             give_packages = [[player] for player in assets]
             give_packages.extend([list(pair) for pair in combinations(assets, 2)])
@@ -921,8 +914,8 @@ def _build_league_targets(service, week: int, position: str | None = None,
                           and player.get("position") not in requested_positions]
             companions.sort(key=lambda player: (
                 player.get("position") in own_weak,
-                (player.get("trade_projection") or {}).get("our_projection") is not None,
-                (player.get("trade_projection") or {}).get("our_projection") or -999), reverse=True)
+                (player.get("trade_projection") or {}).get("recommendation_projection", (player.get("trade_projection") or {}).get("our_projection")) is not None,
+                (player.get("trade_projection") or {}).get("recommendation_projection", (player.get("trade_projection") or {}).get("our_projection")) or -999), reverse=True)
             companions = companions[:2]
 
             package_pairs = {}
@@ -939,7 +932,11 @@ def _build_league_targets(service, week: int, position: str | None = None,
                         if key in package_pairs:
                             continue
                         package_pairs[key] = True
+                        if not plausible_exchange(normalized, give_ids, receive_ids):
+                            continue
                         result = _trade_result(service, week, own, other, normalized, rules, give_ids, receive_ids)
+                        if result['verdict']['worth_it'] in {'NO', 'LEAN NO'}:
+                            continue
                         weekly = result["weekly_lineup_change"]
                         own_delta = weekly["you"]
                         other_delta = weekly["other_team"]

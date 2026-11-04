@@ -50,9 +50,9 @@ class ESPNProjectionSource:
 
 
 def league_projection_payload(service, week: int) -> dict:
-    ttl = 25 if week == service.league.current_week else 180
-    return service.memoized(("league_projection_payload", week), ttl,
-                            lambda: _build_league_projection_payload(service, week))
+    from projection_snapshot import snapshot
+    payload = snapshot(service, week)
+    return {k: v for k, v in payload.items() if not k.startswith('_')}
 
 
 def _build_league_projection_payload(service, week: int) -> dict:

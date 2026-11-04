@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
-import { Barlow_Condensed, IBM_Plex_Sans } from 'next/font/google';
+import { Geist } from 'next/font/google';
 import './globals.css';
 import { PlayerQuickViewProvider } from '@/components/player-quick-view';
-const displayFont = Barlow_Condensed({ subsets: ['latin'], weight: ['600', '700', '800'], variable: '--font-sports-display' });
-const uiFont = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-sports-ui' });
+import { PlayerScheduleProvider } from '@/components/player-projection';
+import PointerInteractionLayer from '@/components/pointer-interaction-layer';
+const uiFont = Geist({ subsets: ['latin'], variable: '--font-sports-ui' });
 export const metadata: Metadata = { title: 'Fantasy Football Analyzer', description: 'Real ESPN fantasy football data, projections, and matchup analysis.' };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang="en" data-scroll-behavior="smooth" className={`${displayFont.variable} ${uiFont.variable}`}><body><PlayerQuickViewProvider>{children}</PlayerQuickViewProvider></body></html>;
+  return <html lang="en" data-scroll-behavior="smooth" className={uiFont.variable}><body><PointerInteractionLayer/><PlayerScheduleProvider><PlayerQuickViewProvider>{children}</PlayerQuickViewProvider></PlayerScheduleProvider></body></html>;
 }

@@ -42,16 +42,16 @@ export function ProjectionDisagreementNote({ value }: { value?: ProjectionDisagr
   return <details className="model-disagreement" aria-label="Projection disagreement">
     <summary>Projections disagree</summary>
     <div className="projection-disagreement-summary">
-      <span>Our model <b>{value.raw_custom.toFixed(1)}</b></span>
+      <span>Raw model <b>{value.raw_custom.toFixed(1)}</b></span>
       <span>ESPN <b>{typeof value.espn_projection === 'number' ? value.espn_projection.toFixed(1) : '--'}</b></span>
-      <span>Recommendation <b>{typeof value.recommendation_estimate === 'number' ? value.recommendation_estimate.toFixed(1) : '--'}</b></span>
+      <span>Projection <b>{typeof value.recommendation_estimate === 'number' ? value.recommendation_estimate.toFixed(1) : '--'}</b></span>
     </div>
     <strong>Why are they different?</strong>
     {factors.length ? <ul>{factors.map((factor, index) => <li key={`${factor.label}-${index}`}>
       {simpleEvidence(factor)}{typeof factor.adjustment === 'number' ? ` (${factor.adjustment > 0 ? '+' : ''}${factor.adjustment.toFixed(1)} points)` : ''}
     </li>)}</ul> : <p>The available information does not explain the full gap.</p>}
     <strong>How much should I trust this?</strong><p>Data confidence: {confidence}. The lineup estimate also considers ESPN and recent results.</p>
-    <details className="projection-advanced"><summary>Advanced details</summary><p>Our model {value.raw_custom.toFixed(2)} · reference average {value.reference_anchor.toFixed(2)} · difference {value.difference?.toFixed(2) ?? '--'}.</p>
+    <details className="projection-advanced"><summary>Advanced details</summary><p>Raw model {value.raw_custom.toFixed(2)} · reference average {value.reference_anchor.toFixed(2)} · difference {value.difference?.toFixed(2) ?? '--'}.</p>
       {!!factors.length && <ul>{factors.map((factor, index) => <li key={`detail-${index}`}>{factor.label || 'Input'}: {factor.evidence || 'Unavailable'}{factor.source ? ` · Source: ${factor.source}` : ''}</li>)}</ul>}
     </details>
   </details>;

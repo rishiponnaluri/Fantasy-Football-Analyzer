@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
-const ENDPOINTS = /^\/(league|teams|my-team|fantasy-matchups(?:\/\d+)?|fantasy-predictions|projections|start-sit|waiver-advice|players\/search|players\/-?\d+|trades\/(?:analyze|suggestions|targets|discovery)|watchlist(?:\/-?\d+)?|nfl\/(?:live-status|schedule|games\/\d+))$/;
-const QUERY_KEYS = ['week', 'q', 'team', 'position', 'positions', 'status', 'sort', 'mode', 'search_mode', 'team_id', 'limit'] as const;
+const ENDPOINTS = /^\/(league|teams(?:\/\d+\/image)?|player-directory|my-team|fantasy-matchups(?:\/\d+)?|fantasy-predictions|projections(?:\/refresh)?|start-sit|waiver-advice|players\/search|players\/-?\d+(?:\/updates)?|trades\/(?:analyze|suggestions|targets|discovery)|watchlist(?:\/-?\d+)?|nfl\/(?:live-status|schedule|games\/\d+))$/;
+const QUERY_KEYS = ['snapshot_id', 'week', 'q', 'team', 'position', 'positions', 'status', 'sort', 'mode', 'search_mode', 'team_id', 'limit'] as const;
 
 async function forward(request: NextRequest, context: { params: Promise<{ path: string[] }> }, method: string) {
   const { path } = await context.params;
@@ -26,6 +26,11 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
       body,
     });
+    if (/^\/teams\/\d+\/image$/.test(endpoint) && response.ok) {
+      return new NextResponse(await response.arrayBuffer(), { status: response.status,
+        headers: { 'Content-Type': response.headers.get('Content-Type') || 'image/jpeg',
+          'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff' } });
+    }
     const payload = await response.json();
     return NextResponse.json(payload, { status: response.status, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {

@@ -1,0 +1,417 @@
+{
+  "matchup": {
+    "fantasy_matchup_id": 29,
+    "fantasy_matchup_period_id": 6,
+    "week": 6,
+    "home_team": {
+      "team_id": 3,
+      "team_name": "Rishi's Returded Team",
+      "abbreviation": "NAh",
+      "team_logo_url": "https://mystique-api.fantasy.espn.com/apis/v1/domains/lm/images/87a87050-acbf-11f1-b3fa-cd9add676ca8",
+      "primary_color": null,
+      "secondary_color": null,
+      "current_fantasy_score": 101.72,
+      "projected_fantasy_score": 124.19189123,
+      "roster": [
+        {
+          "player_id": 4430878,
+          "name": "Jaxon Smith-Njigba",
+          "nfl_team_id": 26,
+          "is_starter": true,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-16T00:15:00+00:00",
+          "bye_week": 11
+        },
+        {
+          "player_id": 3929630,
+          "name": "Saquon Barkley",
+          "nfl_team_id": 21,
+          "is_starter": false,
+          "injury_status": "OUT",
+          "nfl_game_time": "2026-10-18T17:00:00+00:00",
+          "bye_week": 10
+        },
+        {
+          "player_id": 3916387,
+          "name": "Lamar Jackson",
+          "nfl_team_id": 33,
+          "is_starter": false,
+          "injury_status": "OUT",
+          "nfl_game_time": "2026-10-18T17:00:00+00:00",
+          "bye_week": 13
+        },
+        {
+          "player_id": 4596448,
+          "name": "Bucky Irving",
+          "nfl_team_id": 27,
+          "is_starter": true,
+          "injury_status": "QUESTIONABLE",
+          "nfl_game_time": "2026-10-18T17:00:00+00:00",
+          "bye_week": 10
+        },
+        {
+          "player_id": 3915416,
+          "name": "DJ Moore",
+          "nfl_team_id": 2,
+          "is_starter": false,
+          "injury_status": "QUESTIONABLE",
+          "nfl_game_time": "2026-10-18T20:25:00+00:00",
+          "bye_week": 7
+        },
+        {
+          "player_id": 3040151,
+          "name": "George Kittle",
+          "nfl_team_id": 25,
+          "is_starter": true,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-20T00:15:00+00:00",
+          "bye_week": 8
+        },
+        {
+          "player_id": 4568490,
+          "name": "RJ Harvey",
+          "nfl_team_id": 7,
+          "is_starter": false,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-16T00:15:00+00:00",
+          "bye_week": 10
+        },
+        {
+          "player_id": -16023,
+          "name": "Steelers D/ST",
+          "nfl_team_id": 23,
+          "is_starter": true,
+          "injury_status": "NORMAL",
+          "nfl_game_time": "2026-10-18T17:00:00+00:00",
+          "bye_week": 9
+        },
+        {
+          "player_id": 4697745,
+          "name": "Tyler Loop",
+          "nfl_team_id": 33,
+          "is_starter": true,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-18T17:00:00+00:00",
+          "bye_week": 13
+        },
+        {
+          "player_id": 4429205,
+          "name": "Jordan Addison",
+          "nfl_team_id": 16,
+          "is_starter": false,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": null,
+          "bye_week": 6
+        },
+        {
+          "player_id": 3116406,
+          "name": "Tyreek Hill",
+          "nfl_team_id": 0,
+          "is_starter": false,
+          "injury_status": "QUESTIONABLE",
+          "nfl_game_time": null,
+          "bye_week": 1
+        },
+        {
+          "player_id": 3054850,
+          "name": "Alvin Kamara",
+          "nfl_team_id": 18,
+          "is_starter": false,
+          "injury_status": "QUESTIONABLE",
+          "nfl_game_time": "2026-10-18T17:00:00+00:00",
+          "bye_week": 8
+        },
+        {
+          "player_id": 4426354,
+          "name": "George Pickens",
+          "nfl_team_id": 6,
+          "is_starter": true,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-19T00:20:00+00:00",
+          "bye_week": 14
+        },
+        {
+          "player_id": 2577417,
+          "name": "Dak Prescott",
+          "nfl_team_id": 6,
+          "is_starter": true,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-19T00:20:00+00:00",
+          "bye_week": 14
+        },
+        {
+          "player_id": 4429023,
+          "name": "MarShawn Lloyd",
+          "nfl_team_id": 9,
+          "is_starter": true,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-19T00:20:00+00:00",
+          "bye_week": 11
+        },
+        {
+          "player_id": 4696044,
+          "name": "Kaelon Black",
+          "nfl_team_id": 25,
+          "is_starter": false,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-20T00:15:00+00:00",
+          "bye_week": 8
+        },
+        {
+          "player_id": 4426502,
+          "name": "Drake London",
+          "nfl_team_id": 1,
+          "is_starter": true,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-18T17:00:00+00:00",
+          "bye_week": 11
+        }
+      ]
+    },
+    "away_team": {
+      "team_id": 1,
+      "team_name": "i didnt hear no bell ",
+      "abbreviation": "BELL",
+      "team_logo_url": "https://mystique-api.fantasy.espn.com/apis/v1/domains/lm/images/2d700550-c824-11f1-a469-5f3d2e2e57e6",
+      "primary_color": null,
+      "secondary_color": null,
+      "current_fantasy_score": 121.04,
+      "projected_fantasy_score": 110.57143474,
+      "roster": [
+        {
+          "player_id": 4429795,
+          "name": "Jahmyr Gibbs",
+          "nfl_team_id": 8,
+          "is_starter": false,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": null,
+          "bye_week": 6
+        },
+        {
+          "player_id": 4685382,
+          "name": "Omarion Hampton",
+          "nfl_team_id": 24,
+          "is_starter": false,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-18T20:25:00+00:00",
+          "bye_week": 7
+        },
+        {
+          "player_id": 4432665,
+          "name": "Brock Bowers",
+          "nfl_team_id": 13,
+          "is_starter": true,
+          "injury_status": "QUESTIONABLE",
+          "nfl_game_time": "2026-10-18T20:25:00+00:00",
+          "bye_week": 13
+        },
+        {
+          "player_id": 4372016,
+          "name": "Jaylen Waddle",
+          "nfl_team_id": 7,
+          "is_starter": true,
+          "injury_status": "QUESTIONABLE",
+          "nfl_game_time": "2026-10-16T00:15:00+00:00",
+          "bye_week": 10
+        },
+        {
+          "player_id": 4567750,
+          "name": "Emeka Egbuka",
+          "nfl_team_id": 27,
+          "is_starter": false,
+          "injury_status": "QUESTIONABLE",
+          "nfl_game_time": "2026-10-18T17:00:00+00:00",
+          "bye_week": 10
+        },
+        {
+          "player_id": 3953687,
+          "name": "Brandon Aubrey",
+          "nfl_team_id": 6,
+          "is_starter": true,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-19T00:20:00+00:00",
+          "bye_week": 14
+        },
+        {
+          "player_id": -16014,
+          "name": "Rams D/ST",
+          "nfl_team_id": 14,
+          "is_starter": true,
+          "injury_status": "NORMAL",
+          "nfl_game_time": "2026-10-18T20:05:00+00:00",
+          "bye_week": 11
+        },
+        {
+          "player_id": 4575131,
+          "name": "Jacory Croskey-Merritt",
+          "nfl_team_id": 28,
+          "is_starter": false,
+          "injury_status": "OUT",
+          "nfl_game_time": "2026-10-20T00:15:00+00:00",
+          "bye_week": 7
+        },
+        {
+          "player_id": 4047365,
+          "name": "Josh Jacobs",
+          "nfl_team_id": 9,
+          "is_starter": false,
+          "injury_status": "DAY_TO_DAY",
+          "nfl_game_time": "2026-10-19T00:20:00+00:00",
+          "bye_week": 11
+        },
+        {
+          "player_id": 4047650,
+          "name": "DK Metcalf",
+          "nfl_team_id": 23,
+          "is_starter": true,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-18T17:00:00+00:00",
+          "bye_week": 9
+        },
+        {
+          "player_id": 4882093,
+          "name": "Bhayshul Tuten",
+          "nfl_team_id": 30,
+          "is_starter": true,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-18T13:30:00+00:00",
+          "bye_week": 7
+        },
+        {
+          "player_id": 4685720,
+          "name": "Bryce Young",
+          "nfl_team_id": 29,
+          "is_starter": true,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-18T17:00:00+00:00",
+          "bye_week": 5
+        },
+        {
+          "player_id": 2578570,
+          "name": "Jacoby Brissett",
+          "nfl_team_id": 22,
+          "is_starter": false,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-18T20:05:00+00:00",
+          "bye_week": 14
+        },
+        {
+          "player_id": 4360238,
+          "name": "Dameon Pierce",
+          "nfl_team_id": 21,
+          "is_starter": false,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-18T17:00:00+00:00",
+          "bye_week": 10
+        },
+        {
+          "player_id": 4685261,
+          "name": "Germie Bernard",
+          "nfl_team_id": 23,
+          "is_starter": true,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-18T17:00:00+00:00",
+          "bye_week": 9
+        },
+        {
+          "player_id": 4429059,
+          "name": "Woody Marks",
+          "nfl_team_id": 34,
+          "is_starter": true,
+          "injury_status": "ACTIVE",
+          "nfl_game_time": "2026-10-18T13:30:00+00:00",
+          "bye_week": 8
+        }
+      ]
+    },
+    "is_bye": false,
+    "involves_my_team": true
+  },
+  "prediction": {
+    "status": "estimated",
+    "team_a": {
+      "team_id": 3,
+      "team_name": "Rishi's Returded Team",
+      "expected_final_score": 101.72,
+      "projected_final_score": 101.72,
+      "fixed_players": [
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {}
+      ],
+      "modeled_players": []
+    },
+    "team_b": {
+      "team_id": 1,
+      "team_name": "i didnt hear no bell ",
+      "expected_final_score": 121.03999999999998,
+      "projected_final_score": 121.03999999999998,
+      "fixed_players": [
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {}
+      ],
+      "modeled_players": []
+    },
+    "team_a_win_probability": 0.0,
+    "team_b_win_probability": 1.0,
+    "tie_probability": 0.0,
+    "simulation_count": 25000,
+    "model_confidence": "high"
+  },
+  "my_team_id": 3,
+  "game": {
+    "event_id": "401872995",
+    "week": 6,
+    "kickoff": "2026-10-16T00:15Z",
+    "status": {
+      "state": "post",
+      "description": "Final",
+      "detail": "Final/OT",
+      "period": null,
+      "clock": null
+    },
+    "venue": {
+      "name": "Empower Field at Mile High",
+      "address": {
+        "city": "Denver",
+        "state": "CO",
+        "country": "USA"
+      },
+      "indoor": false
+    },
+    "away_team": {
+      "team_id": 26,
+      "name": "Seattle Seahawks",
+      "abbreviation": "SEA",
+      "score": 14,
+      "logo_url": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/sea.png",
+      "primary_color": "002a5c",
+      "secondary_color": "69be28",
+      "identity_source": "ESPN NFL team metadata"
+    },
+    "home_team": {
+      "team_id": 7,
+      "name": "Denver Broncos",
+      "abbreviation": "DEN",
+      "score": 17,
+      "logo_url": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/den.png",
+      "primary_color": "0a2343",
+      "secondary_color": "fc4c02",
+      "identity_source": "ESPN NFL team metadata"
+    },
+    "market_probability": null
+  }
+}

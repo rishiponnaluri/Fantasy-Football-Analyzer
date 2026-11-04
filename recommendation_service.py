@@ -48,6 +48,14 @@ def confidence_aware_value(player):
     given zero influence; it remains visible as raw model output.
     """
     model = player.get("custom_projection") or {}
+    if "recommendation_projection" in model:
+        value = model["recommendation_projection"]
+        detail = {key: player[key] for key in (
+            "recommendation_confidence", "custom_weight", "model_disagreement", "recommendation_note",
+            "recommendation_confidence_score", "projection_confidence_score", "raw_custom_projection",
+            "disagreement_supported") if key in player}
+        detail["recommendation_projection"] = value
+        return value, player.get("recommendation_estimate_source", "confidence_aware_blend"), detail
     raw = model.get("our_projection") if isinstance(model, dict) else None
     espn = model.get("espn_projection", player.get("projected_fantasy_points")) if isinstance(model, dict) else player.get("projected_fantasy_points")
     confidence = model.get("confidence") if isinstance(model, dict) else None

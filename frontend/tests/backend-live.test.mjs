@@ -480,8 +480,8 @@ test('Start/Sit recommendations use the real roster, ESPN lineup eligibility and
   assert.equal(advice.team_id, roster.team_id);
   assert.equal(advice.week, league.current_week);
   assert.ok(advice.recommended_starters.length > 0);
-  assert.equal(advice.legal_lineup, true);
-  assert.equal(advice.recommended_starters.length,
+  assert.equal(advice.legal_lineup, advice.unfilled_slots.length === 0);
+  assert.equal(advice.recommended_starters.length + advice.unfilled_slots.length,
     Object.values(advice.scoring_rules.position_slot_counts).reduce((total, count) => total + count, 0));
   const rosterIds = new Set(roster.roster.map(player => player.player_id));
   const starters = new Set();
@@ -491,6 +491,8 @@ test('Start/Sit recommendations use the real roster, ESPN lineup eligibility and
     assert.ok(!starters.has(player.player_id));
     starters.add(player.player_id);
     assert.ok(player.eligible_positions.includes(player.recommended_slot));
+    assert.notEqual(player.bye_week, advice.week, 'BYE players cannot fill a starting slot');
+    assert.ok(!['OUT', 'IR', 'INJURED_RESERVE', 'SUSPENDED', 'PUP'].includes((player.injury_status || '').toUpperCase().replaceAll(' ', '_')));
     assert.equal(player.estimate_source, 'confidence_aware_blend');
     assert.equal(player.expected_points, player.recommendation_projection);
     assert.equal(player.raw_custom_projection, player.custom_projection.our_projection);
@@ -499,7 +501,22 @@ test('Start/Sit recommendations use the real roster, ESPN lineup eligibility and
     slotCounts[player.recommended_slot] = (slotCounts[player.recommended_slot] || 0) + 1;
   }
   for (const [slot, count] of Object.entries(slotCounts)) assert.ok(count <= advice.scoring_rules.position_slot_counts[slot]);
-  assert.deepEqual(slotCounts, advice.scoring_rules.position_slot_counts);
+  const accountedSlots = {...slotCounts};
+  for (const label of advice.unfilled_slots) {
+    const slot = label === 'FLEX' ? 'RB/WR/TE' : label.replace(/\d+$/, '');
+    assert.ok(slot in advice.scoring_rules.position_slot_counts);
+    accountedSlots[slot] = (accountedSlots[slot] || 0) + 1;
+    assert.ok(!advice.bench.some(player => player.eligible_positions.includes(slot)
+      && player.bye_week !== advice.week
+      && ['available', 'bench', 'starter', 'unassigned'].includes(player.lineup_status)
+      && !['OUT', 'IR', 'INJURED_RESERVE', 'SUSPENDED', 'PUP'].includes((player.injury_status || '').toUpperCase().replaceAll(' ', '_'))),
+    `An eligible bench option could fill ${label}`);
+  }
+  assert.deepEqual(accountedSlots, advice.scoring_rules.position_slot_counts);
+  assert.equal(advice.recommended_starters.length + advice.bench.length, rosterIds.size);
+  for (const player of [...advice.recommended_starters, ...advice.bench].filter(player => player.bye_week === advice.week)) {
+    assert.ok(advice.bench.some(benched => benched.player_id === player.player_id));
+  }
   assert.equal([...starters].filter(id => advice.bench.some(player => player.player_id === id)).length, 0);
   assert.ok(advice.model.includes('ESPN'));
   if (advice.lineup_changes.improvement_points > 0.05) {
@@ -574,4 +591,41 @@ test('Waiver Assistant ranks only the real unrostered ESPN pool and validates op
     assert.ok(advice.personalized_move.weekly_lineup_change >= advice.minimum_add_drop_advantage ||
       (add.needs_match && (advice.personalized_move.rest_of_season_change || 0) >= 8));
   } else assert.ok(advice.move_note);
+});
+
+test('projection consumers agree on one pinned canonical snapshot', async () => {
+  const snapshot = await get(`${frontend}/api/backend/projections`);
+  const query = new URLSearchParams({ week: String(snapshot.week), snapshot_id: snapshot.snapshot_id });
+  const canonical = new Map(snapshot.players.map(row => [row.player_id, row.projection.recommendation_projection]));
+  const roster = await get(`${frontend}/api/backend/my-team?${query}`);
+  const advice = await get(`${frontend}/api/backend/start-sit?${query}`);
+  for (const player of roster.roster) {
+    assert.equal(player.custom_projection.recommendation_projection, canonical.get(player.player_id));
+    assert.equal(player.projection_snapshot_id, snapshot.snapshot_id);
+  }
+  for (const player of [...advice.recommended_starters, ...advice.bench]) {
+    assert.equal(player.recommendation_projection, canonical.get(player.player_id));
+  }
+  const player = roster.roster[0];
+  const profile = await get(`${frontend}/api/backend/players/${player.player_id}?${query}`);
+  assert.equal(profile.custom_projection.recommendation_projection, canonical.get(player.player_id));
+  const matchups = await get(`${frontend}/api/backend/fantasy-matchups?${query}`);
+  const partner = matchups.fantasy_matchups.flatMap(row => [row.home_team, row.away_team])
+    .find(team => team && team.team_id !== roster.team_id && team.roster?.length);
+  const analysis = await send(`${frontend}/api/backend/trades/analyze?${query}`, 'POST', {
+    week: snapshot.week, team_id: partner.team_id,
+    give_player_ids: [player.player_id], receive_player_ids: [partner.roster[0].player_id],
+  });
+  for (const asset of [...analysis.you_give, ...analysis.you_receive]) {
+    assert.equal(asset.weekly_projection, canonical.get(asset.player_id));
+    assert.equal(asset.projection_snapshot_id, snapshot.snapshot_id);
+  }
+  const again = await get(`${frontend}/api/backend/projections?${query}`);
+  assert.deepEqual(again.players, snapshot.players);
+  const discovery = await get(`${frontend}/api/backend/trades/discovery?${query}&positions=RB&positions=WR`);
+  for (const deal of [...discovery.suggestions, ...discovery.possible_trades_to_explore]) {
+    assert.equal(deal.asset_exchange.supported, true);
+    assert.equal(deal.asset_exchange.material_overpay, false);
+    assert.ok(!['NO', 'LEAN NO'].includes(deal.verdict.worth_it));
+  }
 });

@@ -6,6 +6,8 @@ fantasy league matchups. This module has no dependency on the private league.
 
 from datetime import datetime, timezone
 from functools import lru_cache
+from copy import deepcopy
+import json
 import time
 
 import httpx
@@ -20,6 +22,17 @@ _HTTP = httpx.Client(timeout=20, headers={"User-Agent": "FourthAndGoal/1.0"})
 
 
 def _get_json(path, params):
+    # Share identical public NFL reads across schedule, status and prediction
+    # consumers, retaining last-good data through the existing failure cache.
+    from projection_sources.cache import cached
+    key = f"nfl-live-json:{path}:{json.dumps(params, sort_keys=True)}"
+    value, _ = cached(key, 30, lambda: (_get_json_uncached(path, params), {}))
+    if value is None:
+        raise APIError(502, "nfl_data_error", "NFL data is temporarily unavailable.")
+    return deepcopy(value)
+
+
+def _get_json_uncached(path, params):
     for attempt in range(2):
         try:
             response = _HTTP.get(f"{BASE_URL}/{path}", params=params)

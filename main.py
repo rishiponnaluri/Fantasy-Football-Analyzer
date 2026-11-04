@@ -21,6 +21,16 @@ app = FastAPI(
 )
 
 
+@app.middleware("http")
+async def projection_version_context(request, call_next):
+    from projection_snapshot import requested_snapshot
+    token = requested_snapshot.set(request.query_params.get('snapshot_id'))
+    try:
+        return await call_next(request)
+    finally:
+        requested_snapshot.reset(token)
+
+
 @app.exception_handler(APIError)
 async def api_error_handler(request: Request, error: APIError):
     return JSONResponse(status_code=error.status, content=error.payload)
@@ -89,19 +99,55 @@ def fantasy_teams(service: Service):
             "teams": [team_json(team) for team in service.league.teams]}
 
 
+@app.get("/api/teams/{team_id}/image")
+def fantasy_team_image(service: Service, team_id: int):
+    from fantasy_team_images import team_image
+    from fastapi.responses import Response
+    data, content_type = team_image(service, team_id)
+    return Response(data, media_type=content_type, headers={
+        "Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"})
+
+
+@app.get("/api/player-directory")
+def player_directory(service: Service):
+    return service.player_directory()
+
+
 @app.get("/api/my-team")
 def my_fantasy_team(service: Service, week: SelectedWeek = None):
-    return service.my_team_info(week)
+    from projection_snapshot import resolve_players, snapshot
+    selected = service.week(week)
+    team = service.my_team_info(selected)
+    resolved, _ = resolve_players(service, selected, team.get('roster') or [])
+    team['roster'] = list(resolved.values())
+    team['projection_snapshot_id'] = snapshot(service, selected)['snapshot_id']
+    return team
+
+
+def _matchups_with_projection(service, week):
+    from projection_snapshot import resolve_players, snapshot
+    selected = service.week(week)
+    payload = service.fantasy_matchups(selected)
+    teams = [team for matchup in payload['fantasy_matchups']
+             for team in (matchup.get('home_team'), matchup.get('away_team')) if team]
+    players = [p for team in teams for p in team.get('roster') or []]
+    if players:
+        resolved, _ = resolve_players(service, selected, players)
+        for team in teams:
+            if team.get('roster') is not None:
+                team['roster'] = [resolved[p['player_id']] for p in team['roster']]
+        payload['projection_snapshot_id'] = snapshot(service, selected)['snapshot_id']
+    return payload
 
 
 @app.get("/api/fantasy-matchups")
 def fantasy_matchups(service: Service, week: SelectedWeek = None):
-    return service.fantasy_matchups(week)
+    return _matchups_with_projection(service, week)
 
 
 @app.get("/api/fantasy-matchups/{week}")
 def fantasy_matchups_for_week(service: Service, week: Annotated[int, Path(ge=1)]):
-    return service.fantasy_matchups(week)
+    return _matchups_with_projection(service, week)
 
 
 @app.get("/api/fantasy-predictions")
@@ -114,6 +160,18 @@ def fantasy_predictions(service: Service, week: SelectedWeek = None):
 def player_projections(service: Service, week: SelectedWeek = None):
     """Custom player estimates from real ESPN rosters, cards, and scoring logs."""
     return league_projection_payload(service, service.week(week))
+
+
+@app.post("/api/projections/refresh")
+def refresh_projections(service: Service, week: SelectedWeek = None):
+    from projection_snapshot import snapshot
+    selected = service.week(week)
+    # Provider caches remain responsible for rate limits; discard only ESPN's
+    # short-lived request memo, not the published projection version.
+    with service._memo_lock:
+        service._memo_cache.clear()
+    payload = snapshot(service, selected, refresh=True)
+    return {k: v for k, v in payload.items() if not k.startswith('_')}
 
 
 @app.get("/api/free-agents")
@@ -153,13 +211,21 @@ def player_info(service: Service, player_id: int, week: SelectedWeek = None):
     return service.player_info(player_id, week)
 
 
+@app.get("/api/players/{player_id}/updates")
+def player_updates(service: Service, player_id: int, week: SelectedWeek = None):
+    from player_news import updates
+    return {"player_id": player_id, "updates": updates(service.league.league_id, player_id, service.week(week))}
+
+
 @app.get("/api/trades/suggestions")
 def trade_suggestions(service: Service, team_id: Annotated[int, Query(gt=0)],
                       mode: Literal["conservative", "balanced", "aggressive"] = "balanced",
                       week: SelectedWeek = None,
                       positions: list[Literal["QB", "RB", "WR", "TE", "FLEX"]] | None = Query(default=None)):
     from trade_service import suggestions
-    return suggestions(service, team_id, mode, week, positions)
+    from trade_discovery_ranking import rank_suggestions
+    data = suggestions(service, team_id, mode, week, positions)
+    return {**data, "suggestions": rank_suggestions(data.get("suggestions", []))}
 
 
 @app.get("/api/trades/targets")
@@ -174,7 +240,7 @@ def trade_targets(service: Service, week: SelectedWeek = None,
 
 
 @app.get("/api/trades/discovery")
-def trade_discovery(service: Service, week: SelectedWeek = None,
+def trade_discovery(service: Service, week: SelectedWeek = None, debug: bool = False,
                     search_mode: Literal["league_wide", "specific_team"] = "league_wide",
                     team_id: Annotated[int | None, Query(gt=0)] = None,
                     mode: Literal["conservative", "balanced", "aggressive"] = "balanced",
@@ -219,15 +285,23 @@ def trade_discovery(service: Service, week: SelectedWeek = None,
                    if requested_receive(row) and mode_included(row)]
     research = [row for row in data.get("research_trade_ideas", [])
                 if requested_receive(row) and mode_included(row)]
-    suggestions = validated + exploratory + research
-    suggestions.sort(key=lambda row: (
-        {"High": 2, "Medium": 1, "Low": 0}.get(row.get("plausibility"), 0),
-        min((row.get("weekly_lineup_change") or {}).get("you") or -99,
-            (row.get("weekly_lineup_change") or {}).get("other_team") or -99)), reverse=True)
+    from trade_discovery_ranking import rank_suggestions, ranking_key
+    candidates = validated + exploratory + research
+    suggestions = rank_suggestions(candidates)
+    allowed = {ranking_key(row)[2] for row in suggestions}
+    targets = [row for row in targets if ranking_key(row['analysis'])[2] in allowed]
+    targets.sort(key=lambda row: ranking_key(row['analysis']))
+    exploratory = [row for row in suggestions if row in exploratory]
+    research = [row for row in suggestions if row in research]
+
     return {**data, "search_mode": search_mode, "target_team_id": team_id if search_mode == "specific_team" else None,
             "positions": positions, "mode": mode, "trade_targets": targets,
             "possible_trades_to_explore": exploratory, "research_trade_ideas": research,
             "suggestions": suggestions[:40],
+            **({"discovery_debug": {"before_filter": len(candidates),
+                                   "unique_before_filter": len({ranking_key(row)[2] for row in candidates}),
+                                   "after_filter": len(suggestions), "returned": min(40, len(suggestions))}}
+               if debug else {}),
             "message": None if targets or suggestions else "No package met the current roster-fit checks for the selected positions."}
 
 
@@ -252,16 +326,13 @@ def watchlist_items(service: Service):
         return {"items": []}
     week = service.week()
     players = service.player_insights(player_ids, week)
-    from projection_sources.context import enrich_players
-    from projection_engine import project_players
-    enriched, _ = enrich_players(list(players.values()), service.league.year, week, service)
-    projections = project_players(list(enriched.values()), week, service.league.current_week)
+    from projection_snapshot import resolve_players
+    enriched, _ = resolve_players(service, week, list(players.values()))
     hydrated = []
     for item in items:
         player = enriched.get(item["player_id"])
         if player is None:
             continue
-        player["custom_projection"] = projections.get(item["player_id"])
         owner_team = service.teams.get(player.get("fantasy_team_id")) if player.get("fantasy_team_id") not in (None, 0) else None
         player["fantasy_team_name"] = owner_team.team_name if owner_team else None
         player["fantasy_team_owner"] = ", ".join(owner.get("displayName") or " ".join(filter(None, (owner.get("firstName"), owner.get("lastName"))))

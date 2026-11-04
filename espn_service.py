@@ -60,11 +60,12 @@ def team_json(team):
             if len(candidate) == 6 and all(char in "0123456789abcdefABCDEF" for char in candidate):
                 return candidate
         return None
+    from fantasy_team_images import image_fields
     return {
         "team_id": team.team_id,
         "team_name": team.team_name,
         "abbreviation": team.team_abbrev,
-        "team_logo_url": getattr(team, "logo", None) or getattr(team, "logo_url", None),
+        **image_fields(team),
         "primary_color": color(getattr(team, "primary_color", None), getattr(team, "color", None)),
         "secondary_color": color(getattr(team, "secondary_color", None), getattr(team, "alternate_color", None)),
         "owners": [owner_json(owner) for owner in team.owners],
@@ -244,7 +245,7 @@ class ESPNService:
 
     def fantasy_matchups(self, selected=None):
         week = self.week(selected)
-        return self.memoized(("fantasy_matchups", week), 12,
+        return self.memoized(("fantasy_matchups", week), 30,
                              lambda: self._fetch_fantasy_matchups(week))
 
     def _fetch_fantasy_matchups(self, week):
@@ -306,6 +307,9 @@ class ESPNService:
 
     def my_team_info(self, selected=None):
         week = self.week(selected)
+        return self.memoized(("my_team_info", week), 30, lambda: self._fetch_my_team_info(week))
+
+    def _fetch_my_team_info(self, week):
         team = self.my_team()
         matchups = self.fantasy_matchups(week)
         selected_team = None
@@ -368,6 +372,23 @@ class ESPNService:
                         {**raw_player_json(p, self.league.year, week), "lineup_slot": "FA",
                          "lineup_status": "available", "is_starter": False} for p in data["players"]
                     ]}
+
+    def player_directory(self):
+        def load():
+            with espn_operation():
+                data = self.league.espn_request.get_pro_players()
+            known = {player.playerId: player for team in self.league.teams for player in team.roster}
+            # defaultPositionId is a player position, NOT a fantasy lineupSlotId.
+            positions = {1: 'QB', 2: 'RB', 3: 'WR', 4: 'TE', 5: 'K', 16: 'D/ST'}
+            return {'players': [{
+                'player_id': raw['id'], 'name': raw.get('fullName'),
+                'position': positions[raw['defaultPositionId']],
+                'nfl_team': PRO_TEAM_MAP.get(raw.get('proTeamId')) if raw.get('proTeamId') else None,
+                'nfl_team_id': raw.get('proTeamId'),
+                'headshot_url': f"https://a.espncdn.com/i/headshots/nfl/players/full/{raw['id']}.png" if raw['id'] > 0 else None,
+                'injury_status': raw.get('injuryStatus') or getattr(known.get(raw['id']), 'injuryStatus', None),
+            } for raw in data if raw.get('id') and raw.get('fullName') and raw.get('defaultPositionId') in positions]}
+        return self.memoized(('player_directory',), 1800, load)
 
     def search_players(self, query=None, limit=20, team=None, position=None,
                        roster_status=None, sort="our_projection", selected=None):
@@ -467,11 +488,10 @@ class ESPNService:
                     # is not presented as free agent.
                     item["roster_status"] = "unknown"
                 records.append(item)
-            from projection_engine import project_players
-            projections = project_players(records, week, self.league.current_week)
-            for item in records:
-                item["custom_projection"] = projections[item["player_id"]]
-            keys = {"our_projection": lambda p: (p.get("custom_projection", {}).get("our_projection"),),
+            from projection_snapshot import resolve_players
+            resolved, _ = resolve_players(self, week, records)
+            records = list(resolved.values())
+            keys = {"our_projection": lambda p: (p.get("custom_projection", {}).get("recommendation_projection"),),
                     "espn_projection": lambda p: (p.get("projected_fantasy_points"),),
                     "season_points": lambda p: (p.get("season_fantasy_points"),),
                     "points_per_game": lambda p: (p.get("season_fantasy_average"),),
@@ -598,10 +618,9 @@ class ESPNService:
                                   if key not in {"lineup_slot", "lineup_status", "is_starter", "fantasy_points",
                                                 "projected_fantasy_points", "eligible_positions"}}}
                     for player in roster]
-        from projection_sources.context import enrich_players
-        from projection_engine import project_players
-        contextual, _source_status = enrich_players(enriched, self.league.year, week, self)
-        models = project_players(list(contextual.values()), week, self.league.current_week)
+        from projection_snapshot import resolve_players
+        contextual, _source_status = resolve_players(self, week, enriched)
+        models = {pid: p["custom_projection"] for pid, p in contextual.items()}
         enriched = list(contextual.values())
         for player in enriched:
             player["custom_projection"] = models.get(player["player_id"])
@@ -776,11 +795,10 @@ class ESPNService:
             candidates.append(combined)
         rules = self.recommendation_settings()
         from recommendation_service import optimize_lineup, roster_needs
-        from projection_sources.context import enrich_players
-        from projection_engine import project_players
+        from projection_snapshot import resolve_players
         combined_players = roster_enriched + candidates
-        contextual, source_status = enrich_players(combined_players, self.league.year, week, self)
-        models = project_players(list(contextual.values()), week, self.league.current_week)
+        contextual, source_status = resolve_players(self, week, combined_players)
+        models = {pid: p["custom_projection"] for pid, p in contextual.items()}
         roster_enriched = [contextual.get(p["player_id"], p) for p in roster_enriched]
         candidates = [contextual.get(p["player_id"], p) for p in candidates]
         for player in roster_enriched + candidates:
@@ -896,7 +914,7 @@ class ESPNService:
     def player_info(self, player_id, selected=None):
         week = self.week(selected)
         ttl = 25 if week == self.league.current_week else 180
-        return self.memoized(("player_info", week, int(player_id)), ttl,
+        return self.memoized(("player_info", week, int(player_id), __import__("projection_snapshot").snapshot(self, week)["snapshot_id"]), ttl,
                              lambda: self._fetch_player_info(int(player_id), week))
 
     def _fetch_player_info(self, player_id, week):
@@ -996,50 +1014,12 @@ class ESPNService:
                 "nfl_opponent", "nfl_game_time", "bye_week", "jersey_number", "age", "height", "weight",
                 "weekly_stats", "last_3_games", "last_5_games", "game_log", "game_stats",
                 "season_fantasy_average", "season_fantasy_points")}
-            # Build league-scope ranks from the real ESPN roster player cards.
-            # This is an on-demand detail request; search results themselves
-            # never trigger full game-history/context retrieval.
-            rank_players = []
-            for fantasy_team_id, fantasy_team, roster_entry in all_roster_entries:
-                rank_player = raw_player_json(roster_entry, self.league.year, week)
-                rank_player["fantasy_team_id"] = fantasy_team_id
-                rank_player["fantasy_team_name"] = self.teams.get(fantasy_team_id).team_name if self.teams.get(fantasy_team_id) else None
-                rank_player["fantasy_team_owner"] = ", ".join(owner.get("displayName") or " ".join(filter(None, (owner.get("firstName"), owner.get("lastName"))))
-                                                                 for owner in (self.teams.get(fantasy_team_id).owners if self.teams.get(fantasy_team_id) else [])
-                                                                 if owner.get("displayName") or owner.get("firstName") or owner.get("lastName")) or None
-                raw_rostered = roster_entry.get("playerPoolEntry", {}).get("player", {})
-                grouped = {}
-                for stat in raw_rostered.get("stats", []):
-                    if stat.get("seasonId") != self.league.year or stat.get("statSplitTypeId") == 2:
-                        continue
-                    bucket = grouped.setdefault(stat.get("scoringPeriodId"), {})
-                    bucket["actual" if stat.get("statSourceId") == 0 else "projected"] = stat
-                rank_player["game_log"] = [{"week": period, "fantasy_points": bucket["actual"].get("appliedTotal"),
-                                            "projected_fantasy_points": bucket.get("projected", {}).get("appliedTotal"),
-                                            "stats": stats_breakdown(bucket["actual"].get("stats", {}))}
-                                           for period, bucket in sorted(grouped.items())
-                                           if isinstance(period, int) and period > 0 and bucket.get("actual", {}).get("appliedTotal") is not None]
-                rank_player["weekly_stats"] = [{"week": game["week"], "fantasy_points": game["fantasy_points"],
-                                                "projected_fantasy_points": game["projected_fantasy_points"]}
-                                               for game in rank_player["game_log"]]
-                rank_player["last_3_games"] = rank_player["game_log"][-3:]
-                rank_player["last_5_games"] = rank_player["game_log"][-5:]
-                rank_player["game_stats"] = stats_breakdown(grouped.get(week, {}).get("actual", {}).get("stats", {}))
-                season_row = grouped.get(0, {}).get("actual", {})
-                rank_player["season_fantasy_points"] = season_row.get("appliedTotal")
-                rank_player["season_fantasy_average"] = season_row.get("appliedAverage")
-                rank_players.append(rank_player)
-            from projection_sources.context import enrich_players
-            from projection_engine import project_players
-            enriched, _source_status = enrich_players(rank_players, self.league.year, week, self)
-            rank_projections = project_players(list(enriched.values()), week, self.league.current_week)
-            if player_id in enriched:
-                result = enriched[player_id]
-                result["custom_projection"] = rank_projections[player_id]
-            else:
-                one, _source_status = enrich_players([result], self.league.year, week, self)
-                result = one[player_id]
-                result["custom_projection"] = project_players([result], week, self.league.current_week)[player_id]
+            from projection_snapshot import snapshot, resolve_players
+            payload = snapshot(self, week)
+            enriched = {r['player_id']: r['player'] for r in payload['players']}
+            rank_projections = {pid: p['custom_projection'] for pid, p in enriched.items()}
+            result = resolve_players(self, week, [result])[0][player_id]
+            rank_projections[player_id] = result['custom_projection']
             result.update(profile_fields)
             if result.get("fantasy_team_id"):
                 result["roster_status"] = "rostered"
@@ -1051,7 +1031,7 @@ class ESPNService:
             rank_metrics = {
                 "season_points": lambda p: p.get("season_fantasy_points"),
                 "points_per_game": lambda p: p.get("season_fantasy_average"),
-                "week_our_projection": lambda p: rank_projections.get(p["player_id"], {}).get("our_projection"),
+                "week_our_projection": lambda p: rank_projections.get(p["player_id"], {}).get("recommendation_projection"),
             }
             ranked_rows = list(enriched.values())
             for key, getter in rank_metrics.items():
@@ -1088,6 +1068,11 @@ class ESPNService:
                     result["nfl_team_alternate_color"] = None
                     result["nfl_team_full_name"] = None
                     result["nfl_team_identity_source"] = None
+            try:
+                from player_news import updates
+                result['latest_updates'] = updates(self.league.league_id, player_id, week)
+            except Exception:
+                result['latest_updates'] = []
             result["last_updated"] = datetime.now(timezone.utc).isoformat()
             return {key: value for key, value in result.items() if not key.startswith("_")}
 

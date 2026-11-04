@@ -1,4 +1,5 @@
 'use client';
+import { PlayerProjection } from './player-projection';
 
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
@@ -52,18 +53,7 @@ export default function WatchlistPanel({ liveTeamIds }: { liveTeamIds: number[] 
     return () => controller.abort();
   }, [reload]);
 
-  useEffect(() => {
-    if (loading || error) return;
-    let timer: ReturnType<typeof setTimeout>;
-    const controller = new AbortController();
-    const poll = async () => {
-      try { await reload(controller.signal); }
-      catch (reason) { if (!controller.signal.aborted) setRefreshError(message(reason)); }
-      finally { if (!controller.signal.aborted) timer = setTimeout(poll, liveRefreshIntervalMs(liveMode)); }
-    };
-    timer = setTimeout(poll, liveRefreshIntervalMs(liveMode));
-    return () => { controller.abort(); clearTimeout(timer); };
-  }, [loading, error, reload, liveMode]);
+
 
   async function searchPlayers(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setSearching(true); setSearchError(null); setResults([]);
@@ -116,21 +106,21 @@ export default function WatchlistPanel({ liveTeamIds }: { liveTeamIds: number[] 
 
   return <div className="feature-page watchlist-page">
     <div className="feature-toolbar"><div><span className="eyebrow">PERSONAL PLAYER TRACKER</span><p>Track any player from ESPN&apos;s NFL player pool. Watchlist data is stored locally on this server.</p></div><div className="feature-toolbar-actions"><span className="timestamp"><Clock3 size={13}/>{updatedAt ? `Updated ${updatedAt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}` : 'Not updated yet'}</span><button className="button" onClick={manualRefresh} disabled={refreshing}><RefreshCw size={14} className={refreshing ? 'spin' : ''}/> Refresh</button></div></div>
-    {refreshError && <div className="refresh-warning" role="status">Watchlist refresh failed: {refreshError} Showing the last successful player data.</div>}
+    {refreshError && <div className="refresh-warning" role="status">Saved players could not refresh. Showing the last successful data.</div>}
     <section className="panel watchlist-search-panel"><div className="panel-title"><div><h2>Find an NFL player</h2><p>Search ESPN&apos;s real active NFL player pool by name.</p></div><Search size={18}/></div><form className="watchlist-search" onSubmit={searchPlayers}><label className="sr-only" htmlFor="watchlist-query">Player name</label><div className="search-input"><Search size={17}/><input id="watchlist-query" value={query} onChange={event => setQuery(event.target.value)} minLength={2} maxLength={80} placeholder="Search player names…" required/></div><label className="label-select-wrap"><span>Label</span><select value={newLabel} onChange={event => setNewLabel(event.target.value as WatchlistLabel | '')}><option value="">No label</option>{labels.map(label => <option key={label}>{label}</option>)}</select></label><button className="button primary-button" disabled={searching || query.trim().length < 2}><Search size={14}/>{searching ? 'Searching…' : 'Search'}</button></form>
       {searchError && <p className="inline-error" role="alert">{searchError}</p>}
       {results.length > 0 && <div className="search-results">{results.map(player => <article className="search-result" key={player.player_id}><div className="player-cell"><PlayerAvatar player={player} size="sm"/><span className={`position pos-${player.position}`}>{player.position || '--'}</span><div><Link className="player-name player-link" href={`/players/${player.player_id}`}>{player.name}</Link><span className="player-meta">{player.nfl_team || '--'} · {player.injury_status || 'Status unavailable'}</span></div></div><span className="search-player-stats">{player.nfl_team || '--'} <span className="meta-dot">·</span> {player.position || '--'}</span><button className="button add-player-button" disabled={busyPlayer === player.player_id} onClick={() => addPlayer(player)}><Plus size={14}/>{busyPlayer === player.player_id ? 'Adding…' : 'Add'}</button></article>)}</div>}
       {!searching && query.trim().length >= 2 && results.length === 0 && !searchError && <p className="player-unavailable">No matching active NFL players were returned by ESPN.</p>}
     </section>
     <div className="section-link"><h2>Watched players <span className="inline-count">{items.length}</span></h2><span className="muted text-sm">ESPN player data · {liveMode === 'live' ? 'refreshing every 30 seconds during live games' : 'periodic updates enabled'}</span></div>
-    {loading ? <div className="watchlist-grid">{[0,1,2].map(item => <div className="skeleton h-64" key={item}/>)}</div> : error ? <div className="error-card" role="alert"><Bookmark size={25}/><h2>Watchlist could not be loaded</h2><p>{error}</p><button className="button" onClick={manualRefresh}><RefreshCw size={14}/> Retry</button></div> : items.length === 0 ? <section className="panel watchlist-empty"><Bookmark size={28}/><h2>Your watchlist is empty</h2><p>Search for an NFL player above, then add them to keep their ESPN stats here.</p></section> : <div className="watchlist-grid">{items.map(item => {
+    {loading ? <div className="watchlist-grid">{[0,1,2].map(item => <div className="skeleton h-64" key={item}/>)}</div> : error ? <div className="error-card" role="alert"><Bookmark size={25}/><h2>Watchlist could not be loaded</h2><p>Saved players are unavailable right now. Please try again.</p><button className="button" onClick={manualRefresh}><RefreshCw size={14}/> Retry</button></div> : items.length === 0 ? <section className="panel watchlist-empty"><Bookmark size={28}/><h2>Your watchlist is empty</h2><p>Search for an NFL player above, then add them to keep their ESPN stats here.</p></section> : <div className="watchlist-grid">{items.map(item => {
       const player = item.player;
       const recent = (player.game_log || []).slice(-3).map(game => `W${game.week} ${points(game.fantasy_points)}`).join(' · ') || 'Unavailable';
       const live = player.nfl_team_id != null && (liveTeamIds || []).includes(player.nfl_team_id);
       return <article className="watch-player-card" key={item.player_id}>
         <div className="watch-player-heading"><div className="player-cell"><PlayerAvatar player={player} size="md"/><span className={`position pos-${player.position}`}>{player.position || '--'}</span><div><Link className="player-name player-link" href={`/players/${player.player_id}`}>{player.name}</Link><span className="player-meta">{player.nfl_team || '--'} · {player.position || 'Position unavailable'}</span></div></div>{live && <span className="live-indicator"><i/> LIVE</span>}</div>
         <div className="watch-player-matchup"><div><span>Upcoming opponent</span><strong>{player.nfl_opponent || '--'}</strong></div><div><span>Game time</span><strong>{kickoff(player.nfl_game_time)}</strong></div></div>
-        <div className="watch-player-stats"><div><span>Status</span><strong className={player.injury_status && !['ACTIVE','NORMAL'].includes(player.injury_status) ? 'injury' : ''}>{injury(player.injury_status)}</strong></div><div><span>Current fantasy points</span><strong>{points(player.fantasy_points)}</strong></div><div><span>ESPN projected</span><strong>{points(player.projected_fantasy_points)}</strong></div><div><span>Season average</span><strong>{points(player.season_fantasy_average)}</strong></div><div className="recent-production"><span>Recent fantasy production</span><strong>{recent}</strong></div></div>
+        <div className="watch-player-stats"><div><span>Status</span><strong className={player.injury_status && !['ACTIVE','NORMAL'].includes(player.injury_status) ? 'injury' : ''}>{injury(player.injury_status)}</strong></div><div><span>Current fantasy points</span><strong>{points(player.fantasy_points)}</strong></div><div><span>ESPN projected</span><strong><PlayerProjection player={player} value={player.projected_fantasy_points}/></strong></div><div><span>Season average</span><strong>{points(player.season_fantasy_average)}</strong></div><div className="recent-production"><span>Recent fantasy production</span><strong>{recent}</strong></div></div>
         <div className="watch-player-footer"><label><span className="sr-only">Watchlist label for {player.name}</span><select aria-label={`Watchlist label for ${player.name}`} value={item.label || ''} onChange={event => changeLabel(item.player_id, event.target.value)} disabled={busyPlayer === item.player_id}><option value="">No label</option>{labels.map(label => <option key={label}>{label}</option>)}</select></label><span className="timestamp"><Clock3 size={12}/>{updatedAt ? `Updated ${updatedAt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}` : 'Not updated yet'}</span><button className="icon-button remove-watch-button" aria-label={`Remove ${player.name} from watchlist`} onClick={() => removePlayer(item.player_id)} disabled={busyPlayer === item.player_id}><Trash2 size={15}/></button></div>
       </article>;
     })}</div>}

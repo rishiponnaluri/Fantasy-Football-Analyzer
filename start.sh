@@ -39,6 +39,7 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-exec npm exec -- concurrently --kill-others --names API,WEB --prefix-colors blue,green \
+exec npm exec -- concurrently --kill-others --names API,WEB,NEWS --prefix-colors blue,green,gray \
   ".venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000" \
-  "npm run $WEB_MODE --workspace fantasy-football-dashboard"
+  "npm run $WEB_MODE --workspace fantasy-football-dashboard" \
+  ".venv/bin/python scripts/refresh_player_news.py --watch"
